@@ -14,7 +14,7 @@ D-Bugger is the restored original D-Bugger application for automated GitHub code
 - Pages output directory: `dist`
 - D1 binding: `DBUGGER_DB`
 - D1 database: `dbugger-events` (`5a680e0e-362a-4ee1-9f53-d29121005a60`)
-- Latest sign-in deployment commit: `b39939a`
+- Latest email-auth deployment commit: `437152b`
 
 ## Authentication and credentials
 
