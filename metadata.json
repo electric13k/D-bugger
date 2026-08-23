@@ -1,0 +1,8 @@
+{
+  "name": "D-Bugger",
+  "description": "Autonomous AI Bug Remediator & GitHub MCP Review Engine. Continuously monitors commit streams, performs multi-step agentic fixes, executes 5-stage secure code review pipelines, opens pull requests, sends email & Slack digests, and provides 1-click rollbacks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

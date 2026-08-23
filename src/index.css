@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+:root { color-scheme: dark; font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; background: #071016; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #071016; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+.field { display: block; width: 100%; border: 1px solid rgba(255,255,255,.1); border-radius: .75rem; background: rgba(0,0,0,.2); padding: .85rem 1rem; color: white; outline: none; transition: border-color .2s, background .2s, box-shadow .2s; }
+.field::placeholder { color: rgb(71 85 105); }
+.field:focus { border-color: rgba(190,242,100,.55); background: rgba(0,0,0,.3); box-shadow: 0 0 0 3px rgba(190,242,100,.08); }
+select.field { color-scheme: dark; }
+::selection { background: #bef264; color: #071016; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,.02); }
+::-webkit-scrollbar-thumb { border: 3px solid #071016; border-radius: 999px; background: rgba(148,163,184,.3); }
+@keyframes pulseLine { 0%,100% { opacity: .45; transform: scaleX(.92); } 50% { opacity: 1; transform: scaleX(1); } }

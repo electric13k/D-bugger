@@ -1,0 +1,8 @@
+name = "dbugger"
+compatibility_date = "2026-08-23"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DBUGGER_DB"
+database_name = "dbugger-events"
+database_id = "5a680e0e-362a-4ee1-9f53-d29121005a60"
