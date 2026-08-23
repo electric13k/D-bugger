@@ -47,9 +47,7 @@ async function authRequest(path: string, body?: Record<string, unknown>) {
 }
 
 export function getWorkspaceUser(): WorkspaceUser | null {
-  if (cachedUser) return cachedUser;
-  if (typeof window !== 'undefined' && window.localStorage.getItem(GUEST_KEY) === 'true') return createGuestUser();
-  return null;
+  return cachedUser;
 }
 
 export function onWorkspaceAuthStateChanged(callback: (user: WorkspaceUser | null) => void) {
@@ -72,11 +70,11 @@ export async function refreshWorkspaceUser() {
       if (typeof window !== 'undefined') window.localStorage.removeItem(GUEST_KEY);
       setCurrentUser(user);
     } else if (!cachedUser) {
-      setCurrentUser(getWorkspaceUser());
+      setCurrentUser(null);
     }
     return user;
   } catch {
-    return getWorkspaceUser();
+    return cachedUser;
   }
 }
 
