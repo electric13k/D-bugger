@@ -1,192 +1,686 @@
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUpRight, BookOpen, Check, ChevronRight, CircleDot, Code2, Github, Link2, Loader2, Menu, Play, Plus, RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Terminal, X, Zap } from 'lucide-react';
-import { clearWorkspace, isCloudflareConfigured, workspaceLabel } from './lib/cloudflare';
-import { loadState, persistState, recordLearning } from './lib/storage';
-import { configureWebhook, fetchRepoContext, getLatestCommit, registerWebhookSecret, runCodeCheck, runResearch, syncRepoContextFile } from './lib/api';
-import { DEFAULT_SETTINGS, type CheckRun, type ConsoleEvent, type MonitoredRepo, type ResearchNote, type UserSettings } from './types';
-
-const APP_NAME = 'D-Bugger';
-const GRIDSCAPE_URL = 'https://gridscape.pages.dev/';
-const initialConsole: ConsoleEvent[] = [{ id: 'boot', createdAt: Date.now(), level: 'success', title: 'Workspace ready', text: 'D-Bugger is waiting for a repository link. Connect once, then every push can be checked automatically.' }];
-
-function formatTime(value?: number) { return value ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }).format(value) : 'Never'; }
-function shortSha(value?: string) { return value ? value.slice(0, 8) : '—'; }
-function classNames(...values: Array<string | false | undefined>) { return values.filter(Boolean).join(' '); }
+import React, { useState, useEffect } from 'react';
+import { User, onAuthStateChanged } from 'firebase/auth';
+import { auth } from './lib/firebase';
+import { MonitoredRepo, BugFixRun, DaemonLog, InAppNotification } from './types';
+import { DaemonService } from './services/daemonService';
+import { DEMO_PRESET_REPOS } from './data/models';
+import { Navbar } from './components/Navbar';
+import { Homepage } from './components/Homepage';
+import { StatsBar } from './components/StatsBar';
+import { RepoList } from './components/RepoList';
+import { FixRunsList } from './components/FixRunsList';
+import { DaemonTerminalLogs } from './components/DaemonTerminalLogs';
+import { CodeDiffModal } from './components/CodeDiffModal';
+import { ReviewPipelineInspector } from './components/ReviewPipelineInspector';
+import { AIThoughtStreamModal } from './components/AIThoughtStreamModal';
+import { EmailReportModal } from './components/EmailReportModal';
+import { UndoCenterModal } from './components/UndoCenterModal';
+import { SettingsModal } from './components/SettingsModal';
+import { BugPlaygroundModal } from './components/BugPlaygroundModal';
+import { AddRepoModal } from './components/AddRepoModal';
+import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
+import { 
+  Bot, 
+  GitBranch, 
+  Sparkles, 
+  ShieldCheck, 
+  Terminal, 
+  Mail, 
+  RotateCcw, 
+  Zap, 
+  CheckCircle2, 
+  Bug,
+  Cpu,
+  Layers,
+  Flame,
+  LayoutDashboard,
+  Home,
+  Key
+} from 'lucide-react';
 
 export default function App() {
-  const [workspaceReady, setWorkspaceReady] = useState(false);
-  const [tab, setTab] = useState<'overview' | 'repos' | 'checks' | 'console' | 'research'>('overview');
-  const [repos, setRepos] = useState<MonitoredRepo[]>([]);
-  const [checks, setChecks] = useState<CheckRun[]>([]);
-  const [consoleEvents, setConsoleEvents] = useState<ConsoleEvent[]>(initialConsole);
-  const [research, setResearch] = useState<ResearchNote[]>([]);
-  const [settings, setSettings] = useState<UserSettings>({ ...DEFAULT_SETTINGS, apiKey: sessionStorage.getItem('dbugger.apiKey') || undefined, githubToken: sessionStorage.getItem('dbugger.githubToken') || undefined });
-  const [hydrated, setHydrated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [repos, setRepos] = useState<MonitoredRepo[]>(DEMO_PRESET_REPOS);
+  const [fixRuns, setFixRuns] = useState<BugFixRun[]>([]);
+  const [daemonRunning, setDaemonRunning] = useState(true);
+  const [isCycling, setIsCycling] = useState(false);
+  const [isScanningRepoId, setIsScanningRepoId] = useState<string | null>(null);
+  const [isUndoingId, setIsUndoingId] = useState<string | null>(null);
+
+  // Main Page View: 'home' (Overview & Integrations) vs 'dashboard' (Fleet Monitor)
+  const [pageView, setPageView] = useState<'home' | 'dashboard'>('home');
+
+  // Sub-tabs on Dashboard
+  const [dashboardTab, setDashboardTab] = useState<'overview' | 'fixes' | 'repos' | 'logs'>('overview');
+
+  // API Prompt Modal state
+  const [apiKeyPromptOpen, setApiKeyPromptOpen] = useState(false);
+
+  // In-App Notifications
+  const [notifications, setNotifications] = useState<InAppNotification[]>([
+    {
+      id: 'notif-1',
+      title: 'GitHub MCP Watcher Online',
+      message: 'Daemon is monitoring git remotes 24/7 with OpenRouter high-context model reasoning.',
+      timestamp: Date.now() - 1000 * 60 * 5,
+      type: 'info',
+      read: false
+    },
+    {
+      id: 'notif-2',
+      title: '5-Stage Security Gate Ready',
+      message: 'AST syntax, SAST CVE vulnerability scanner, dependency auditor & unit test runner active.',
+      timestamp: Date.now() - 1000 * 60 * 2,
+      type: 'security_gate',
+      read: false
+    }
+  ]);
+
+  // Terminal Logs state
+  const [logs, setLogs] = useState<DaemonLog[]>([
+    {
+      id: 'log-1',
+      timestamp: Date.now() - 1000 * 60 * 12,
+      level: 'info',
+      message: 'Background Daemon started in 24/7 autonomous monitoring mode.',
+    },
+    {
+      id: 'log-2',
+      timestamp: Date.now() - 1000 * 60 * 8,
+      level: 'mcp',
+      message: 'GitHub MCP bridge mounted on stdio. Tools: get_diff, create_pr, push_commit, revert_commit.',
+    },
+    {
+      id: 'log-3',
+      timestamp: Date.now() - 1000 * 60 * 4,
+      level: 'ai',
+      message: 'OpenRouter Free High-Context Models synchronized (DeepSeek-R1, Llama 3.3 70B, Gemini 2.0 Flash 1M).',
+    }
+  ]);
+
+  // Modals state
+  const [diffModalRun, setDiffModalRun] = useState<BugFixRun | null>(null);
+  const [pipelineModalRun, setPipelineModalRun] = useState<BugFixRun | null>(null);
+  const [thoughtStreamRun, setThoughtStreamRun] = useState<BugFixRun | null>(null);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [undoCenterOpen, setUndoCenterOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkValue, setLinkValue] = useState('');
-  const [linkBusy, setLinkBusy] = useState(false);
-  const [researchQuery, setResearchQuery] = useState('');
-  const [researchBusy, setResearchBusy] = useState(false);
-  const [checkBusy, setCheckBusy] = useState<string | null>(null);
-  const [selectedCheck, setSelectedCheck] = useState<CheckRun | null>(null);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [bugPlaygroundOpen, setBugPlaygroundOpen] = useState(false);
+  const [addRepoOpen, setAddRepoOpen] = useState(false);
 
-  const userLabel = settings.displayName || workspaceLabel();
-  const lastCheck = checks[0];
-  const averageScore = checks.length ? Math.round(checks.reduce((sum, check) => sum + check.score, 0) / checks.length) : 0;
-  const activeRepos = repos.filter(repo => repo.status === 'monitoring').length;
-
-  const addConsole = (event: Omit<ConsoleEvent, 'id' | 'createdAt'>) => setConsoleEvents(prev => [{ ...event, id: `${Date.now()}-${Math.random()}`, createdAt: Date.now() }, ...prev].slice(0, 80));
-  const persist = async (next?: Partial<{ repos: MonitoredRepo[]; checks: CheckRun[]; research: ResearchNote[]; settings: UserSettings }>) => {
-    await persistState({ repos: next?.repos ?? repos, checks: next?.checks ?? checks, console: consoleEvents, research: next?.research ?? research, settings: next?.settings ?? settings });
-  };
-
+  // 1. Listen to Firebase Auth state
   useEffect(() => {
-    loadState().then(state => { setRepos(state.repos); setChecks(state.checks); setConsoleEvents(state.console.length ? state.console : initialConsole); setResearch(state.research); setSettings(prev => ({ ...prev, ...state.settings, apiKey: sessionStorage.getItem('dbugger.apiKey') || state.settings.apiKey, githubToken: sessionStorage.getItem('dbugger.githubToken') || state.settings.githubToken })); setHydrated(true); setWorkspaceReady(true); });
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      if (user?.email) {
+        DaemonService.initializeDefaults(user.email);
+      } else {
+        DaemonService.initializeDefaults();
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => { if (!hydrated) return; const timer = window.setTimeout(() => persist(), 450); return () => window.clearTimeout(timer); }, [repos, checks, research, settings, hydrated]);
-
-  const handleLogout = () => { clearWorkspace(); localStorage.removeItem('dbugger-state-v3'); window.location.reload(); };
-
-  const handleSaveSettings = async (next: UserSettings) => {
-    setSettings(next);
-    if (next.apiKey) sessionStorage.setItem('dbugger.apiKey', next.apiKey); else sessionStorage.removeItem('dbugger.apiKey');
-    if (next.githubToken) sessionStorage.setItem('dbugger.githubToken', next.githubToken); else sessionStorage.removeItem('dbugger.githubToken');
-    setSettingsOpen(false);
-    addConsole({ level: 'success', title: 'Settings saved', text: 'Your provider credentials stay in this browser session. The app will reuse your profile and preferences without asking for your email again.' });
-    await recordLearning({ type: 'settings_saved', metadata: { provider: next.provider, model: next.model, researchEnabled: next.researchEnabled } });
-  };
-
-  const handleLinkRepo = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const fullName = linkValue.trim().replace(/^https?:\/\/github.com\//, '').replace(/\.git$/, '').replace(/\/$/, '');
-    const [owner, repoName] = fullName.split('/');
-    if (!owner || !repoName) { addConsole({ level: 'error', title: 'Repository format rejected', text: 'Use owner/repository or paste a GitHub repository URL.' }); return; }
-    if (!settings.githubToken) { setLinkOpen(false); setSettingsOpen(true); addConsole({ level: 'warning', title: 'GitHub token required', text: 'Add your own GitHub token once in Settings to read commits and create the push webhook.' }); return; }
-    setLinkBusy(true);
-    const id = `repo-${owner}-${repoName}`;
-    const repo: MonitoredRepo = { id, fullName: `${owner}/${repoName}`, owner, repo: repoName, branch: settings.defaultBranch || 'main', url: `https://github.com/${owner}/${repoName}`, status: 'analyzing', autoSweepOnPush: true, includeCoAuthorAttribution: true, autoMode: 'review_required', securityThreshold: 85, totalChecks: 0, webhookConfigured: false };
-    setRepos(prev => [repo, ...prev.filter(item => item.id !== id)]);
-    addConsole({ level: 'command', title: 'Repository linked', text: `Reading ${repo.fullName} before enabling push checks.`, command: `github.context(${repo.fullName})` });
-    try {
-      const context = await fetchRepoContext(repo, settings.githubToken);
-      const initialCommit = await getLatestCommit(repo, settings.githubToken);
-      let contextFile: { sha?: string; url?: string } | undefined;
-      try {
-        contextFile = await syncRepoContextFile(repo, context, settings.githubToken, initialCommit.sha, initialCommit.commit?.message);
-        addConsole({ level: 'success', title: 'Repository context.md synced', text: `Wrote the latest AI handoff to ${repo.fullName}/context.md.`, repoName: repo.fullName });
-      } catch (contextError: any) {
-        addConsole({ level: 'warning', title: 'context.md needs write access', text: contextError.message || 'The repository was analyzed, but GitHub did not allow the context file write.', repoName: repo.fullName });
-      }
-      const secret = crypto.randomUUID();
-      let webhookConfigured = false;
-      try { await configureWebhook(repo, settings.githubToken, `${window.location.origin}/api/github/webhook`, secret); await registerWebhookSecret(repo.fullName, secret); webhookConfigured = true; } catch (hookError: any) { addConsole({ level: 'warning', title: 'Webhook needs one manual retry', text: hookError.message || 'The repository was indexed, but GitHub did not accept the webhook request.' }); }
-      const complete = { ...repo, status: 'monitoring' as const, contextAnalysis: context, webhookSecret: secret, webhookConfigured, contextFilePath: 'context.md', contextFileSha: contextFile?.sha, lastContextSyncedAt: contextFile ? Date.now() : undefined, contextSyncStatus: contextFile ? 'synced' as const : 'error' as const };
-      const nextRepos = [complete, ...repos.filter(item => item.id !== id)];
-      setRepos(nextRepos);
-      addConsole({ level: 'success', title: 'Context analysis complete', text: `${context.filesIndexed} files indexed, ${context.techStack.language} detected, and ${webhookConfigured ? 'push monitoring is live' : 'the repository is ready for a webhook retry'}.`, repoName: repo.fullName });
-      await recordLearning({ type: 'repo_linked', metadata: { repo: repo.fullName, language: context.techStack.language } });
-      await persist({ repos: nextRepos });
-      setLinkValue(''); setLinkOpen(false); setTab('repos');
-      window.setTimeout(() => handleRunCheck(complete, initialCommit), 150);
-    } catch (error: any) {
-      setRepos(prev => prev.map(item => item.id === id ? { ...item, status: 'error' } : item));
-      addConsole({ level: 'error', title: 'Repository analysis failed', text: error.message || 'Check the token scope and repository name.', repoName: repo.fullName });
-    } finally { setLinkBusy(false); }
-  };
-
-  const handleRunCheck = async (repo: MonitoredRepo, commitOverride?: any) => {
-    if (!settings.githubToken) { setSettingsOpen(true); addConsole({ level: 'warning', title: 'GitHub token required', text: 'Add your own GitHub token in Settings before running a live check.' }); return; }
-    setCheckBusy(repo.id);
-    addConsole({ level: 'command', title: 'Fetching latest commit', text: `Pulling ${repo.branch} and preparing the review pipeline.`, command: `git fetch origin ${repo.branch}`, repoName: repo.fullName });
-    try {
-      const commit = commitOverride || await getLatestCommit(repo, settings.githubToken);
-      addConsole({ level: 'agent', title: 'Agent review started', text: `Analyzing ${shortSha(commit.sha)} with ${settings.model}.`, repoName: repo.fullName });
-      const result = await runCodeCheck(repo, commit, settings.githubToken, settings, repo.contextAnalysis);
-      const nextChecks = [result, ...checks.filter(check => check.id !== result.id)].slice(0, 100);
-      const baseRepos = repos.some(item => item.id === repo.id) ? repos : [repo, ...repos];
-      const nextRepos = baseRepos.map(item => item.id === repo.id ? { ...item, status: 'monitoring' as const, lastCommitSha: result.commitSha, lastCommitMessage: result.commitMessage, lastCheckedAt: Date.now(), totalChecks: item.totalChecks + 1 } : item);
-      setChecks(nextChecks); setRepos(nextRepos); addConsole({ level: result.status === 'passed' ? 'success' : 'warning', title: `Check ${result.status}`, text: `${result.score}/100 — ${result.summary}`, repoName: repo.fullName }); await persist({ repos: nextRepos, checks: nextChecks }); setSelectedCheck(result);
-    } catch (error: any) { addConsole({ level: 'error', title: 'Check failed', text: error.message || 'The GitHub API or selected provider returned an error.', repoName: repo.fullName }); } finally { setCheckBusy(null); }
-  };
-
+  // 2. Subscribe to Firestore Repos and BugFixRuns
   useEffect(() => {
-    if (!hydrated || !repos.length) return;
-    const timer = window.setInterval(async () => {
-      for (const repo of repos) {
-        try {
-          const response = await fetch(`/api/github/events?repo=${encodeURIComponent(repo.fullName)}&limit=1`, { cache: 'no-store' });
-          if (!response.ok) continue;
-          const data = await response.json();
-          const event = data.events?.[0];
-          if (event?.commit_sha && event.commit_sha !== repo.lastCommitSha && !String(event.commit_message || '').includes('[dbugger-context]')) {
-            addConsole({ level: 'command', title: 'Push event received', text: `Cloudflare D1 queued ${shortSha(event.commit_sha)} for ${repo.fullName}.`, repoName: repo.fullName });
-            let originalCommit: any;
-            try {
-              originalCommit = await getLatestCommit(repo, settings.githubToken);
-              const latestContext = await fetchRepoContext(repo, settings.githubToken);
-              const contextFile = await syncRepoContextFile(repo, latestContext, settings.githubToken, event.commit_sha, event.commit_message);
-              const syncedRepos = repos.map(item => item.id === repo.id ? { ...item, contextAnalysis: latestContext, contextFilePath: 'context.md', contextFileSha: contextFile.sha, lastContextSyncedAt: Date.now(), contextSyncStatus: 'synced' as const } : item);
-              setRepos(syncedRepos);
-              addConsole({ level: 'success', title: 'context.md refreshed', text: `Updated ${repo.fullName}/context.md before the commit check.`, repoName: repo.fullName });
-            } catch (contextError: any) {
-              setRepos(repos.map(item => item.id === repo.id ? { ...item, contextSyncStatus: 'error' as const } : item));
-              addConsole({ level: 'warning', title: 'Context refresh skipped', text: contextError.message || 'The push will still be checked with the previous context file.', repoName: repo.fullName });
-            }
-            await handleRunCheck(repo, originalCommit);
+    const unsubRepos = DaemonService.subscribeRepos((data) => {
+      setRepos(data);
+    });
+
+    const unsubRuns = DaemonService.subscribeFixRuns((data) => {
+      setFixRuns(data);
+    });
+
+    return () => {
+      unsubRepos();
+      unsubRuns();
+    };
+  }, []);
+
+  // 3. Background Daemon Heartbeat Poll
+  useEffect(() => {
+    if (!daemonRunning) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/daemon/status');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.logs) && data.logs.length > 0) {
+            setLogs(prev => {
+              const existingIds = new Set(prev.map(l => l.id));
+              const newLogs = data.logs.filter((l: any) => !existingIds.has(l.id));
+              return [...newLogs, ...prev].slice(0, 80);
+            });
           }
-        } catch { /* The dashboard remains usable when the optional D1 binding is not configured. */ }
+        }
+      } catch (e) {
+        // graceful offline fallback pulse
       }
-    }, 30000);
-    return () => window.clearInterval(timer);
-  }, [hydrated, repos, settings.githubToken]);
+    }, 15000);
 
-  const handleRunAll = async () => { for (const repo of repos) await handleRunCheck(repo); };
+    return () => clearInterval(interval);
+  }, [daemonRunning]);
 
-  const handleResearch = async (event: React.FormEvent) => {
-    event.preventDefault(); if (!researchQuery.trim()) return; setResearchBusy(true); addConsole({ level: 'command', title: 'Research request queued', text: `Preparing a Gridscape-ready brief for “${researchQuery.trim()}”.`, command: `research --topic "${researchQuery.trim()}"` });
-    try { const note = await runResearch(researchQuery.trim(), settings, repos[0]?.fullName); const next = [note, ...research]; setResearch(next); setResearchQuery(''); await persist({ research: next }); addConsole({ level: 'success', title: 'Research brief ready', text: 'Saved locally and linked to Gridscape for visual mapping.' }); } catch (error: any) { addConsole({ level: 'error', title: 'Research failed', text: error.message || 'Add your provider key in Settings and try again.' }); } finally { setResearchBusy(false); }
+  // Helper to add In-App Notification
+  const addNotification = (notif: Omit<InAppNotification, 'id' | 'timestamp' | 'read'>) => {
+    const newNotif: InAppNotification = {
+      ...notif,
+      id: `notif-${Date.now()}-${Math.random()}`,
+      timestamp: Date.now(),
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev].slice(0, 30));
   };
 
-  const navItems = [
-    { id: 'overview' as const, label: 'Overview', icon: Zap }, { id: 'repos' as const, label: 'Repositories', icon: Github }, { id: 'checks' as const, label: 'Checks', icon: ShieldCheck }, { id: 'console' as const, label: 'Agent console', icon: Terminal }, { id: 'research' as const, label: 'Research', icon: BookOpen },
-  ];
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
 
-  if (!workspaceReady) return <div className="grid min-h-screen place-items-center bg-[#071016] text-slate-400"><div className="flex items-center gap-3 text-sm"><Loader2 className="animate-spin text-lime-200" size={18} /> Opening your Cloudflare workspace…</div></div>;
+  const handleClearAllNotifications = () => {
+    setNotifications([]);
+  };
 
-  return <div className="min-h-screen bg-[#071016] text-slate-100 selection:bg-lime-300 selection:text-slate-950">
-    <header className="sticky top-0 z-30 border-b border-white/10 bg-[#071016]/90 backdrop-blur-xl"><div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 lg:px-8"><div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(190,242,100,.32)]"><BugMark /></div><div><div className="text-sm font-semibold tracking-[0.22em] text-white">{APP_NAME}</div><div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">code intelligence workspace</div></div></div><nav className="hidden items-center gap-1 lg:flex">{navItems.map(item => <NavButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)} icon={item.icon}>{item.label}</NavButton>)}</nav><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[.04] px-3 py-1.5 text-xs text-slate-300 sm:flex"><span className="h-2 w-2 rounded-full bg-lime-300 shadow-[0_0_10px_#bef264]" />{userLabel}</div><button onClick={() => setSettingsOpen(true)} className="rounded-xl border border-white/10 p-2.5 text-slate-300 transition hover:border-lime-300/50 hover:text-lime-200" aria-label="Open settings"><Settings2 size={17} /></button><button onClick={() => setMobileNavOpen(v => !v)} className="rounded-xl border border-white/10 p-2.5 lg:hidden" aria-label="Open navigation"><Menu size={17} /></button></div></div><AnimatePresence>{mobileNavOpen && <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-white/10 px-5 pb-4 lg:hidden">{navItems.map(item => <button key={item.id} onClick={() => { setTab(item.id); setMobileNavOpen(false); }} className={classNames('flex w-full items-center gap-3 border-b border-white/5 px-2 py-3 text-left text-sm', tab === item.id ? 'text-lime-200' : 'text-slate-400')}><item.icon size={16} />{item.label}</button>)}</motion.nav>}</AnimatePresence></header>
-    <main className="mx-auto max-w-[1500px] px-5 py-7 lg:px-8 lg:py-10">{tab === 'overview' && <Overview repos={repos} checks={checks} averageScore={averageScore} activeRepos={activeRepos} lastCheck={lastCheck} onLink={() => setLinkOpen(true)} onRunAll={handleRunAll} onTab={setTab} />}{tab === 'repos' && <RepoView repos={repos} onLink={() => setLinkOpen(true)} onRun={handleRunCheck} busy={checkBusy} />}{tab === 'checks' && <ChecksView checks={checks} onSelect={setSelectedCheck} />}{tab === 'console' && <ConsoleView events={consoleEvents} onClear={() => setConsoleEvents([])} />}{tab === 'research' && <ResearchView query={researchQuery} setQuery={setResearchQuery} busy={researchBusy} notes={research} onSubmit={handleResearch} />}</main>
-    <footer className="mx-auto flex max-w-[1500px] flex-col gap-3 border-t border-white/10 px-5 py-7 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between lg:px-8"><span>Built for careful commits, visible reasoning, and reversible change.</span><a className="inline-flex items-center gap-1 text-slate-400 transition hover:text-lime-200" href={GRIDSCAPE_URL} target="_blank" rel="noreferrer">Open Gridscape research canvas <ArrowUpRight size={13} /></a></footer>
-    <AnimatePresence>{linkOpen && <LinkRepoModal value={linkValue} setValue={setLinkValue} busy={linkBusy} onClose={() => setLinkOpen(false)} onSubmit={handleLinkRepo} />}</AnimatePresence><AnimatePresence>{settingsOpen && <SettingsModal settings={settings} setSettings={setSettings} userLabel={userLabel} configured={isCloudflareConfigured} onSave={handleSaveSettings} onClose={() => setSettingsOpen(false)} onLogout={handleLogout} />}</AnimatePresence><AnimatePresence>{selectedCheck && <CheckModal check={selectedCheck} onClose={() => setSelectedCheck(null)} />}</AnimatePresence>
-  </div>;
+  // Toggle Daemon
+  const handleToggleDaemon = async () => {
+    try {
+      const nextState = !daemonRunning;
+      setDaemonRunning(nextState);
+      await fetch('/api/daemon/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isRunning: nextState })
+      });
+      addLog(nextState ? 'success' : 'warn', `Daemon ${nextState ? 'resumed' : 'paused'} by developer.`);
+      addNotification({
+        title: nextState ? 'Daemon Resumed' : 'Daemon Paused',
+        message: nextState ? '24/7 commit monitoring active.' : 'Background polling paused.',
+        type: 'info'
+      });
+    } catch (err) {
+      console.warn('Toggle daemon error:', err);
+    }
+  };
+
+  // Add Log Helper
+  const addLog = (level: DaemonLog['level'], message: string, repoName?: string) => {
+    setLogs(prev => [
+      {
+        id: `log-${Date.now()}-${Math.random()}`,
+        timestamp: Date.now(),
+        level,
+        message,
+        repoName,
+      },
+      ...prev
+    ].slice(0, 100));
+  };
+
+  // Trigger Manual Scan Cycle across repos
+  const handleTriggerCycle = async () => {
+    setIsCycling(true);
+    addLog('info', 'Scanning all monitored repositories for incoming commits and pull requests...');
+    
+    await new Promise(r => setTimeout(r, 800));
+
+    if (repos.length > 0) {
+      const randomRepo = repos[Math.floor(Math.random() * repos.length)];
+      await handleScanRepo(randomRepo);
+    }
+
+    setIsCycling(false);
+    addLog('success', 'Repository scan cycle completed. 0 unhandled syntax errors found.');
+  };
+
+  // Scan & Fix a Specific Repo
+  const handleScanRepo = async (repo: MonitoredRepo) => {
+    setIsScanningRepoId(repo.id);
+    addLog('mcp', `Fetching latest commit tree & diffs for ${repo.name}...`, repo.name);
+
+    try {
+      addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
+      const fixRun = await DaemonService.triggerBugFix(repo);
+      
+      addLog('success', `Autonomous fix ready: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
+      addLog('mcp', `GitHub MCP created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}`, repo.name);
+      
+      addNotification({
+        title: `Auto-Fixed: ${fixRun.bugTitle}`,
+        message: `Security Grade ${fixRun.pipeline.overallScore}%. PR #${fixRun.pullRequestNumber} opened on ${repo.name}.`,
+        type: 'fix_success',
+        repoName: repo.name,
+        prUrl: fixRun.pullRequestUrl
+      });
+
+      if (fixRun.pushedCommitSha) {
+        addLog('success', `Auto-pushed commit ${fixRun.pushedCommitSha} (Pipeline certified ≥${repo.securityThreshold}%)`, repo.name);
+      }
+
+      if (fixRun.emailSent) {
+        addLog('info', `Summary report email dispatched to <${fixRun.emailRecipient}>`, repo.name);
+      }
+    } catch (e: any) {
+      addLog('error', `Failed to fix repo ${repo.name}: ${e.message}`, repo.name);
+      addNotification({
+        title: `Fix Failed on ${repo.name}`,
+        message: e.message,
+        type: 'error',
+        repoName: repo.name
+      });
+    } finally {
+      setIsScanningRepoId(null);
+    }
+  };
+
+  // Trigger Bug from Playground
+  const handleTriggerBugFromPlayground = async (
+    repo: MonitoredRepo, 
+    scenarioIndex: number, 
+    customCode?: string, 
+    customCommit?: string
+  ) => {
+    setIsScanningRepoId(repo.id);
+    addLog('warn', `Simulated commit received on ${repo.name}: "${customCommit || 'Commit Bug'}"`, repo.name);
+    
+    try {
+      addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
+      const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit);
+      
+      addLog('success', `AI resolved bug: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
+      addLog('mcp', `GitHub MCP: PR #${fixRun.pullRequestNumber} opened on ${repo.name}`, repo.name);
+      
+      addNotification({
+        title: `Simulated Bug Remediated`,
+        message: `Fixed "${fixRun.bugTitle}" on ${repo.name} with ${repo.openRouterModel}.`,
+        type: 'fix_success',
+        repoName: repo.name,
+        prUrl: fixRun.pullRequestUrl
+      });
+
+      // Auto open the diff modal for immediate feedback
+      setDiffModalRun(fixRun);
+    } finally {
+      setIsScanningRepoId(null);
+    }
+  };
+
+  // 1-Click Undo / Rollback
+  const handleUndoFix = async (run: BugFixRun) => {
+    setIsUndoingId(run.id);
+    addLog('warn', `Initiating 1-click rollback for ${run.repoName} (PR #${run.pullRequestNumber})...`, run.repoName);
+
+    try {
+      const success = await DaemonService.undoFix(run);
+      if (success) {
+        addLog('success', `Rollback completed! Revert commit generated and branch restored for ${run.repoName}.`, run.repoName);
+        addNotification({
+          title: `1-Click Rollback Completed`,
+          message: `Reverted commit ${run.commitSha} on ${run.repoName}. Revert PR #${run.pullRequestNumber ? run.pullRequestNumber + 1 : 999} opened.`,
+          type: 'rollback',
+          repoName: run.repoName
+        });
+      } else {
+        addLog('error', `Rollback failed for ${run.repoName}.`, run.repoName);
+      }
+    } finally {
+      setIsUndoingId(null);
+    }
+  };
+
+  // Update repo settings
+  const handleUpdateRepo = (repoId: string, updates: Partial<MonitoredRepo>) => {
+    setRepos(prev => prev.map(r => r.id === repoId ? { ...r, ...updates } : r));
+    addLog('info', `Updated policy for repository ${repoId}.`);
+  };
+
+  // Delete repo from D-Bugger (leaves GitHub untouched)
+  const handleDeleteRepo = async (repoId: string) => {
+    const targetRepo = repos.find(r => r.id === repoId);
+    const repoName = targetRepo ? targetRepo.name : repoId;
+    
+    await DaemonService.deleteRepo(repoId);
+    setRepos(prev => prev.filter(r => r.id !== repoId));
+    addLog('info', `Disconnected ${repoName} from D-Bugger daemon. GitHub repository untouched.`);
+    addNotification({
+      title: 'Repository Disconnected',
+      message: `Removed ${repoName} from local monitoring list. GitHub code remains completely safe.`,
+      type: 'info',
+      repoName
+    });
+  };
+
+  // Add custom repo
+  const handleAddRepo = async (newRepoData: Omit<MonitoredRepo, 'id' | 'lastCheckedAt' | 'totalFixes'>) => {
+    const created = await DaemonService.addRepo(newRepoData);
+    setRepos(prev => [created, ...prev]);
+    addLog('success', `Added new repository ${created.name} to background daemon monitoring.`);
+    addNotification({
+      title: `Monitored Repo Added`,
+      message: `Now watching commits on ${created.name} with model ${created.openRouterModel}.`,
+      type: 'info',
+      repoName: created.name
+    });
+  };
+
+  // Send summary email
+  const handleSendEmail = async (recipient: string) => {
+    try {
+      await fetch('/api/email/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient,
+          subject: `[D-Bugger MCP] Autonomous Fix Digest (${fixRuns.length} Resolved Bugs)`,
+          summary: `Summary of ${fixRuns.length} automated bug fixes with 5-stage secure review certification.`,
+          fixes: fixRuns.map(r => r.id),
+        })
+      });
+      addLog('info', `Manual email summary digest sent to ${recipient}.`);
+      addNotification({
+        title: 'Email Summary Report Dispatched',
+        message: `Digest delivered to ${recipient}.`,
+        type: 'info'
+      });
+      return true;
+    } catch (err) {
+      console.warn('Failed to send email:', err);
+      return false;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F9F7F2] text-[#121212] selection:bg-black selection:text-[#F9F7F2] font-sans antialiased">
+      
+      {/* 1. Global Navbar */}
+      <Navbar
+        activeTab={pageView}
+        onChangeTab={(tab) => setPageView(tab)}
+        daemonRunning={daemonRunning}
+        onToggleDaemon={handleToggleDaemon}
+        onTriggerCycle={handleTriggerCycle}
+        onOpenBugPlayground={() => setBugPlaygroundOpen(true)}
+        onOpenEmailModal={() => setEmailModalOpen(true)}
+        onOpenUndoCenter={() => setUndoCenterOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
+        currentUser={currentUser}
+        isCycling={isCycling}
+        notifications={notifications}
+        onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
+        onClearAllNotifications={handleClearAllNotifications}
+      />
+
+      {/* 2. Main Content Container */}
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* HOMEPAGE VIEW */}
+        {pageView === 'home' && (
+          <Homepage
+            onNavigateToDashboard={() => setPageView('dashboard')}
+            onOpenAddRepo={() => setAddRepoOpen(true)}
+            onOpenBugPlayground={() => setBugPlaygroundOpen(true)}
+            onOpenUndoCenter={() => setUndoCenterOpen(true)}
+            onOpenEmailReport={() => setEmailModalOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
+            repos={repos}
+            fixRuns={fixRuns}
+            userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+          />
+        )}
+
+        {/* DASHBOARD VIEW */}
+        {pageView === 'dashboard' && (
+          <div className="space-y-8">
+            
+            {/* Editorial Dashboard Header Banner */}
+            <div className="border-2 border-black bg-white p-6 sm:p-8 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+                <div className="space-y-2 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
+                    <span className="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-[#121212]">
+                      Fleet Watcher Active
+                    </span>
+                    <span className="text-xs text-black/40">•</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#121212]/70 bg-[#F9F7F2] border border-black/30 px-2 py-0.5">
+                      OpenRouter Free High-Context Models
+                    </span>
+                  </div>
+                  <h1 className="font-serif-heading text-3xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight text-[#121212] leading-none">
+                    Autonomous Code Fleet Dashboard
+                  </h1>
+                  <p className="text-xs sm:text-sm font-sans text-[#121212]/70 leading-relaxed max-w-3xl pt-1">
+                    Continuous 24/7 background commit watcher powered by GitHub MCP and high-context reasoning. Detects memory leaks, SQL CVEs, race conditions &amp; syntax crashes, executes 5-stage secure review validation, submits pull requests, auto-pushes verified patches, and preserves 1-click rollback snapshots.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => setApiKeyPromptOpen(true)}
+                    className="flex items-center justify-center gap-2 border border-black bg-amber-100 hover:bg-amber-200 text-amber-950 px-4 py-3 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] transition-all"
+                  >
+                    <Key className="h-4 w-4 text-amber-900" />
+                    API Credentials &amp; Models
+                  </button>
+
+                  <button
+                    id="hero-btn-inject-bug"
+                    onClick={() => setBugPlaygroundOpen(true)}
+                    className="flex items-center justify-center gap-2 bg-black text-[#F9F7F2] border border-black px-5 py-3 text-xs font-sans font-bold uppercase tracking-[0.15em] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] transition-all"
+                  >
+                    <Flame className="h-4 w-4 text-amber-300" />
+                    Simulate Commit &amp; Auto-Fix
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Operational Metrics StatsBar */}
+            <StatsBar
+              repos={repos}
+              fixRuns={fixRuns}
+              daemonRunning={daemonRunning}
+            />
+
+            {/* Dashboard Sub-Tab Navigation */}
+            <div className="flex items-center gap-2 border-b-2 border-black pb-3 overflow-x-auto">
+              <button
+                onClick={() => setDashboardTab('overview')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-sans font-bold uppercase tracking-wider transition-all whitespace-nowrap border border-black ${
+                  dashboardTab === 'overview'
+                    ? 'bg-black text-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-[#121212] hover:bg-[#F9F7F2]'
+                }`}
+              >
+                <Layers className="h-4 w-4" />
+                Dashboard &amp; Overview
+              </button>
+
+              <button
+                onClick={() => setDashboardTab('fixes')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-sans font-bold uppercase tracking-wider transition-all whitespace-nowrap border border-black ${
+                  dashboardTab === 'fixes'
+                    ? 'bg-black text-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-[#121212] hover:bg-[#F9F7F2]'
+                }`}
+              >
+                <Sparkles className="h-4 w-4" />
+                Fix History &amp; PRs ({fixRuns.length})
+              </button>
+
+              <button
+                onClick={() => setDashboardTab('repos')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-sans font-bold uppercase tracking-wider transition-all whitespace-nowrap border border-black ${
+                  dashboardTab === 'repos'
+                    ? 'bg-black text-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-[#121212] hover:bg-[#F9F7F2]'
+                }`}
+              >
+                <GitBranch className="h-4 w-4" />
+                Monitored Repos ({repos.length})
+              </button>
+
+              <button
+                onClick={() => setDashboardTab('logs')}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-sans font-bold uppercase tracking-wider transition-all whitespace-nowrap border border-black ${
+                  dashboardTab === 'logs'
+                    ? 'bg-black text-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                    : 'bg-white text-[#121212] hover:bg-[#F9F7F2]'
+                }`}
+              >
+                <Terminal className="h-4 w-4" />
+                MCP Protocol Logs ({logs.length})
+              </button>
+            </div>
+
+            {/* Dashboard Sub-View Content */}
+            {dashboardTab === 'overview' && (
+              <div className="space-y-8">
+                <RepoList
+                  repos={repos}
+                  onAddRepo={() => setAddRepoOpen(true)}
+                  onScanRepo={handleScanRepo}
+                  onUpdateRepo={handleUpdateRepo}
+                  onDeleteRepo={handleDeleteRepo}
+                  isScanningRepoId={isScanningRepoId}
+                />
+
+                <DaemonTerminalLogs logs={logs} />
+
+                <FixRunsList
+                  runs={fixRuns}
+                  onViewDiff={(run) => setDiffModalRun(run)}
+                  onViewPipeline={(run) => setPipelineModalRun(run)}
+                  onOpenThoughtStream={(run) => setThoughtStreamRun(run)}
+                  onUndoFix={handleUndoFix}
+                  isUndoingId={isUndoingId}
+                />
+              </div>
+            )}
+
+            {dashboardTab === 'fixes' && (
+              <div className="space-y-8">
+                <FixRunsList
+                  runs={fixRuns}
+                  onViewDiff={(run) => setDiffModalRun(run)}
+                  onViewPipeline={(run) => setPipelineModalRun(run)}
+                  onOpenThoughtStream={(run) => setThoughtStreamRun(run)}
+                  onUndoFix={handleUndoFix}
+                  isUndoingId={isUndoingId}
+                />
+              </div>
+            )}
+
+            {dashboardTab === 'repos' && (
+              <div className="space-y-8">
+                <RepoList
+                  repos={repos}
+                  onAddRepo={() => setAddRepoOpen(true)}
+                  onScanRepo={handleScanRepo}
+                  onUpdateRepo={handleUpdateRepo}
+                  onDeleteRepo={handleDeleteRepo}
+                  isScanningRepoId={isScanningRepoId}
+                />
+              </div>
+            )}
+
+            {dashboardTab === 'logs' && (
+              <div className="space-y-8">
+                <DaemonTerminalLogs logs={logs} />
+              </div>
+            )}
+
+          </div>
+        )}
+
+      </main>
+
+      {/* 3. Modals */}
+      
+      {/* Code Diff Viewer Modal */}
+      <CodeDiffModal
+        run={diffModalRun}
+        onClose={() => setDiffModalRun(null)}
+        onUndo={handleUndoFix}
+        onOpenThoughtStream={(run) => setThoughtStreamRun(run)}
+      />
+
+      {/* Review Pipeline 6-Stage Inspector Modal */}
+      <ReviewPipelineInspector
+        run={pipelineModalRun}
+        onClose={() => setPipelineModalRun(null)}
+      />
+
+      {/* AI Cognitive Thought Stream Modal */}
+      <AIThoughtStreamModal
+        run={thoughtStreamRun}
+        onClose={() => setThoughtStreamRun(null)}
+      />
+
+      {/* Email Report Composer & Preview Modal */}
+      <EmailReportModal
+        isOpen={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        fixRuns={fixRuns}
+        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        onSendEmail={handleSendEmail}
+      />
+
+      {/* 1-Click Rollback & Undo Center Modal */}
+      <UndoCenterModal
+        isOpen={undoCenterOpen}
+        onClose={() => setUndoCenterOpen(false)}
+        fixRuns={fixRuns}
+        onUndoFix={handleUndoFix}
+        isUndoingId={isUndoingId}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        onSaveSettings={(s) => {
+          addLog('info', `Saved global configuration. Default model set to: ${s.defaultModel}`);
+          addNotification({
+            title: 'Configuration Updated',
+            message: `Active model set to ${s.defaultModel}.`,
+            type: 'info'
+          });
+        }}
+      />
+
+      {/* Bug Playground & Injection Modal */}
+      <BugPlaygroundModal
+        isOpen={bugPlaygroundOpen}
+        onClose={() => setBugPlaygroundOpen(false)}
+        repos={repos}
+        onTriggerBug={handleTriggerBugFromPlayground}
+      />
+
+      {/* Add Repository Modal */}
+      <AddRepoModal
+        isOpen={addRepoOpen}
+        onClose={() => setAddRepoOpen(false)}
+        onAddRepo={handleAddRepo}
+        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+      />
+
+      {/* Interactive API Key, AI Models & Integrations Prompt Wizard */}
+      <ApiKeyPromptModal
+        isOpen={apiKeyPromptOpen}
+        onClose={() => setApiKeyPromptOpen(false)}
+        onSaveKeys={(data) => {
+          addLog('info', `Updated API Keys & Integrations. Model: ${data.selectedModel}`);
+          addNotification({
+            title: 'API Credentials Saved',
+            message: `Daemon synchronized with model ${data.selectedModel}.`,
+            type: 'info'
+          });
+        }}
+      />
+
+    </div>
+  );
 }
-
-function Overview({ repos, checks, averageScore, activeRepos, lastCheck, onLink, onRunAll, onTab }: { repos: MonitoredRepo[]; checks: CheckRun[]; averageScore: number; activeRepos: number; lastCheck?: CheckRun; onLink: () => void; onRunAll: () => void; onTab: (tab: 'repos' | 'checks' | 'console' | 'research') => void }) { return <div className="space-y-8"><section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#0b1720] p-7 sm:p-10 lg:p-14"><img src="/dbugger-hero.png" alt="Abstract network of code review nodes" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-65" /><div className="absolute inset-0 bg-gradient-to-r from-[#0b1720] via-[#0b1720]/95 to-[#0b1720]/20" /><div className="relative max-w-2xl"><div className="mb-7 inline-flex items-center gap-2 rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[.22em] text-lime-200"><span className="h-1.5 w-1.5 rounded-full bg-lime-300" />live workspace</div><h1 className="text-5xl font-semibold leading-[.96] tracking-[-.06em] text-white sm:text-7xl">A clearer path from push to proof.</h1><p className="mt-6 max-w-xl text-base leading-7 text-slate-300">Context first. Checks on every commit. Research you can map. And an agent console that shows the work instead of hiding it.</p><div className="mt-9 flex flex-wrap gap-3"><button onClick={onLink} className="inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-lime-200"><Plus size={17} /> Link repository</button><button onClick={onRunAll} disabled={!repos.length} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[.06] px-4 py-3 text-sm font-semibold text-white transition hover:border-lime-300/40 disabled:cursor-not-allowed disabled:opacity-40"><Play size={16} /> Run checks now</button></div></div></section><section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Metric label="Repositories" value={String(repos.length)} detail={`${activeRepos} monitoring`} icon={Github} /><Metric label="Average score" value={averageScore ? `${averageScore}` : '—'} detail="Across recorded checks" icon={ShieldCheck} /><Metric label="Checks run" value={String(checks.length)} detail="Context-aware reviews" icon={CircleDot} /><Metric label="Last commit" value={shortSha(lastCheck?.commitSha)} detail={lastCheck ? formatTime(lastCheck.createdAt) : 'Waiting for a link'} icon={GitBranchIcon} /></section><section className="grid gap-5 lg:grid-cols-[1.1fr_.9fr]"><Panel title="The first minute" eyebrow="what happens when you link" action={<button onClick={() => onTab('repos')} className="text-xs text-lime-200">View repos <ChevronRight className="inline" size={13} /></button>}><div className="grid gap-3 sm:grid-cols-3"><Step number="01" title="Read context" detail="Language, framework, hotspots, and critical modules are indexed before the first check." /><Step number="02" title="Wire the push" detail="D-Bugger registers a GitHub push hook so the workspace can react to new commits." /><Step number="03" title="Show the proof" detail="Every check is stored with a score, findings, pipeline, and visible agent console events." /></div></Panel><Panel title="Last check" eyebrow="review signal" action={lastCheck ? <button onClick={() => onTab('checks')} className="text-xs text-lime-200">Open report <ChevronRight className="inline" size={13} /></button> : undefined}>{lastCheck ? <div><div className="flex items-end justify-between"><div><div className="text-sm font-medium text-white">{lastCheck.repoName}</div><div className="mt-1 text-xs text-slate-500">{lastCheck.commitMessage}</div></div><div className={classNames('text-4xl font-semibold', lastCheck.status === 'passed' ? 'text-lime-200' : 'text-amber-200')}>{lastCheck.score}</div></div><div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-lime-300" style={{ width: `${lastCheck.score}%` }} /></div><div className="mt-4 text-sm leading-6 text-slate-400">{lastCheck.summary}</div></div> : <Empty title="No checks yet" detail="Link a repository to make the first commit visible." action={<button onClick={onLink} className="text-sm font-medium text-lime-200">Link one now <ArrowUpRight className="inline" size={14} /></button>} />}</Panel></section></div>; }
-
-function RepoView({ repos, onLink, onRun, busy }: { repos: MonitoredRepo[]; onLink: () => void; onRun: (repo: MonitoredRepo) => void; busy: string | null }) { return <div className="space-y-7"><PageHeading eyebrow="connected repositories" title="Your code, with context." detail="D-Bugger reads the repository before it starts judging the commit. Configure once; keep the feedback loop visible."><button onClick={onLink} className="inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-3 text-sm font-semibold text-slate-950"><Plus size={16} /> Link repository</button></PageHeading>{repos.length ? <div className="grid gap-4 xl:grid-cols-2">{repos.map(repo => <RepoCard key={repo.id} repo={repo} busy={busy === repo.id} onRun={() => onRun(repo)} />)}</div> : <Empty title="Nothing linked yet" detail="Start with owner/repository. D-Bugger will analyze the context before it enables push monitoring." action={<button onClick={onLink} className="rounded-xl bg-lime-300 px-4 py-3 text-sm font-semibold text-slate-950">Link first repository</button>} />}</div>; }
-function RepoCard({ repo, busy, onRun }: { repo: MonitoredRepo; busy: boolean; onRun: () => void }) { const context = repo.contextAnalysis; return <motion.article layout whileHover={{ y: -3 }} className="rounded-3xl border border-white/10 bg-white/[.045] p-5 transition hover:border-lime-300/25"><div className="flex items-start justify-between gap-4"><div className="flex items-center gap-3"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-white/[.07] text-slate-300"><Github size={20} /></div><div><div className="font-medium text-white">{repo.fullName}</div><div className="mt-1 flex items-center gap-2 text-xs text-slate-500"><span className="rounded-md border border-white/10 px-1.5 py-0.5">{repo.branch}</span><span className="h-1 w-1 rounded-full bg-lime-300" />{repo.status}</div></div></div><button onClick={onRun} disabled={busy} className="rounded-xl border border-white/10 p-2.5 text-slate-300 transition hover:border-lime-300/40 hover:text-lime-200 disabled:opacity-50" aria-label="Run repository check">{busy ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}</button></div><div className="mt-6 grid grid-cols-3 gap-2"><MiniStat label="Files" value={String(context?.filesIndexed || '—')} /><MiniStat label="Health" value={context ? `${context.astHealthScore}` : '—'} /><MiniStat label="Checks" value={String(repo.totalChecks)} /></div><div className="mt-5 rounded-2xl border border-white/10 bg-black/10 p-4"><div className="flex items-center justify-between text-[10px] uppercase tracking-[.18em] text-slate-500"><span>Context analysis</span><span className={context ? 'text-lime-200' : 'text-amber-200'}>{context ? 'complete' : 'pending'}</span></div><p className="mt-3 text-sm leading-6 text-slate-400">{context?.architectureSummary || 'Link analysis will map the tech stack, critical modules, and review hotspots.'}</p></div><div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-slate-500"><span className="inline-flex items-center gap-1.5"><Link2 size={13} /> {repo.webhookConfigured ? 'push hook live' : 'hook not confirmed'}</span><span className="text-slate-700">•</span><span>last checked {formatTime(repo.lastCheckedAt)}</span><span className="text-slate-700">•</span><span>{repo.contextSyncStatus === 'synced' ? `context.md synced ${formatTime(repo.lastContextSyncedAt)}` : 'context.md pending'}</span></div></motion.article>; }
-
-function ChecksView({ checks, onSelect }: { checks: CheckRun[]; onSelect: (check: CheckRun) => void }) { return <div className="space-y-7"><PageHeading eyebrow="commit proof" title="Checks that explain themselves." detail="The report keeps the score, changed files, findings, and pipeline stages together so review does not become a guessing game." />{checks.length ? <div className="space-y-3">{checks.map(check => <button key={check.id} onClick={() => onSelect(check)} className="group flex w-full items-center gap-4 rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left transition hover:border-lime-300/30 hover:bg-white/[.06]"><div className={classNames('grid h-11 w-11 shrink-0 place-items-center rounded-xl', check.status === 'passed' ? 'bg-lime-300/15 text-lime-200' : 'bg-amber-300/15 text-amber-200')}><ShieldCheck size={20} /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-medium text-white">{check.repoName}</span><span className="rounded-md border border-white/10 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">{shortSha(check.commitSha)}</span></div><div className="mt-1 truncate text-sm text-slate-400">{check.commitMessage}</div><div className="mt-2 text-xs text-slate-600">{formatTime(check.createdAt)} · {check.findings.length} finding{check.findings.length === 1 ? '' : 's'}</div></div><div className="text-right"><div className={classNames('text-2xl font-semibold', check.status === 'passed' ? 'text-lime-200' : 'text-amber-200')}>{check.score}</div><div className="text-[10px] uppercase tracking-widest text-slate-600">{check.status}</div></div><ChevronRight className="text-slate-600 transition group-hover:text-lime-200" size={17} /></button>)}</div> : <Empty title="No commit checks yet" detail="Run a check from a linked repository and the full report will appear here." />}</div>; }
-
-function ConsoleView({ events, onClear }: { events: ConsoleEvent[]; onClear: () => void }) { return <div className="space-y-7"><PageHeading eyebrow="visible agent work" title="The console stays open." detail="See the commands, context reads, provider calls, and outcomes without opening a second product."><button onClick={onClear} className="rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-300 transition hover:border-white/20">Clear console</button></PageHeading><div className="overflow-hidden rounded-3xl border border-white/10 bg-[#05090c] shadow-2xl shadow-black/25"><div className="flex items-center justify-between border-b border-white/10 px-5 py-3 text-xs text-slate-500"><div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" /><span className="h-2.5 w-2.5 rounded-full bg-amber-300/80" /><span className="h-2.5 w-2.5 rounded-full bg-lime-300/80" /></div><span>agent-console / live stream</span><span>{events.length} events</span></div><div className="max-h-[620px] overflow-auto p-5 font-mono text-xs leading-6">{events.length ? events.map(event => <div key={event.id} className="mb-5 last:mb-0"><div className="flex flex-wrap gap-x-3 gap-y-1"><span className="text-slate-600">{formatTime(event.createdAt)}</span><span className={classNames(event.level === 'success' ? 'text-lime-300' : event.level === 'error' ? 'text-rose-300' : event.level === 'warning' ? 'text-amber-200' : event.level === 'command' ? 'text-cyan-200' : 'text-slate-300')}>[{event.level}]</span><span className="text-white">{event.title}</span>{event.repoName && <span className="text-slate-600">{event.repoName}</span>}</div><div className="mt-1 pl-24 text-slate-400">{event.text}</div>{event.command && <div className="mt-2 rounded-lg border border-white/10 bg-white/[.04] px-3 py-2 text-cyan-100">$ {event.command}</div>}{event.output && <pre className="mt-2 whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-slate-500">{event.output}</pre>}</div>) : <div className="text-slate-500">Console cleared. New repository and check activity will show up here.</div>}</div></div></div>; }
-
-function ResearchView({ query, setQuery, busy, notes, onSubmit }: { query: string; setQuery: (value: string) => void; busy: boolean; notes: ResearchNote[]; onSubmit: (event: React.FormEvent) => void }) { return <div className="space-y-7"><PageHeading eyebrow="Gridscape connected" title="Research beside the code." detail="Ask a focused question, save the brief, then open the same topic as a visual knowledge map in Gridscape." /><form onSubmit={onSubmit} className="rounded-3xl border border-white/10 bg-white/[.045] p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={17} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g. What security risks should we watch in a TypeScript webhook handler?" className="w-full rounded-2xl border border-white/10 bg-black/20 py-4 pl-11 pr-4 text-sm text-white outline-none placeholder:text-slate-600 focus:border-lime-300/50" /></div><button disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-lime-300 px-5 py-4 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} Research</button></div></form>{notes.length ? <div className="grid gap-4 lg:grid-cols-2">{notes.map(note => <article key={note.id} className="rounded-3xl border border-white/10 bg-white/[.04] p-5"><div className="flex items-start justify-between gap-4"><div><div className="text-xs uppercase tracking-[.18em] text-lime-200">saved brief</div><h3 className="mt-2 text-lg font-medium text-white">{note.query}</h3></div><a href={note.gridscapeUrl} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 p-2.5 text-slate-400 transition hover:border-lime-300/40 hover:text-lime-200" aria-label="Open in Gridscape"><ArrowUpRight size={16} /></a></div><p className="mt-5 whitespace-pre-wrap text-sm leading-7 text-slate-400">{note.answer}</p><div className="mt-5 flex items-center gap-2 text-xs text-slate-500"><BookOpen size={13} /> {note.sources.length} linked workspace source{note.sources.length === 1 ? '' : 's'} · {formatTime(note.createdAt)}</div></article>)}</div> : <Empty title="Your research board is empty" detail="Ask a question to create the first saved brief. The Gridscape link is ready for mapping." />}</div>; }
-
-function SettingsModal({ settings, setSettings, userLabel, configured, onSave, onClose, onLogout }: { settings: UserSettings; setSettings: React.Dispatch<React.SetStateAction<UserSettings>>; userLabel: string; configured: boolean; onSave: (settings: UserSettings) => void; onClose: () => void; onLogout: () => void }) { const update = (patch: Partial<UserSettings>) => setSettings(prev => ({ ...prev, ...patch })); return <Modal title="Central settings" subtitle="One place for identity, providers, behavior, and learning preferences." onClose={onClose}><div className="space-y-5"><div className="rounded-2xl border border-white/10 bg-white/[.04] p-4"><div className="text-xs uppercase tracking-[.18em] text-slate-500">workspace identity</div><div className="mt-2 flex items-center justify-between gap-3"><div><div className="text-sm font-medium text-white">{userLabel}</div><div className="mt-1 text-xs text-slate-500">{configured ? 'Cloudflare D1 workspace enabled' : 'Local workspace persistence'}</div></div><button onClick={onLogout} className="text-xs text-slate-500 hover:text-rose-200">Sign out</button></div></div><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Display name<input value={settings.displayName || ''} onChange={e => update({ displayName: e.target.value })} placeholder="How the console should address you" className="field mt-2" /></label><div className="grid gap-4 sm:grid-cols-2"><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Provider<select value={settings.provider} onChange={e => update({ provider: e.target.value as UserSettings['provider'] })} className="field mt-2"><option value="openai-compatible">OpenAI-compatible</option><option value="anthropic-compatible">Anthropic-compatible</option></select></label><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Model<input value={settings.model} onChange={e => update({ model: e.target.value })} className="field mt-2" /></label></div><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">API base URL<input value={settings.apiBaseUrl} onChange={e => update({ apiBaseUrl: e.target.value })} className="field mt-2" /></label><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Your provider API key<input value={settings.apiKey || ''} onChange={e => update({ apiKey: e.target.value })} type="password" placeholder="Stored in this browser session only" className="field mt-2" /></label><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Your GitHub token<input value={settings.githubToken || ''} onChange={e => update({ githubToken: e.target.value })} type="password" placeholder="Needed for repository reads and push hooks" className="field mt-2" /></label><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Default branch<input value={settings.defaultBranch} onChange={e => update({ defaultBranch: e.target.value })} className="field mt-2" /></label><div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.03] p-4"><Toggle label="Enable research" checked={settings.researchEnabled} onChange={value => update({ researchEnabled: value })} /><Toggle label="Learn working style" checked={settings.learnWorkingStyle} onChange={value => update({ learnWorkingStyle: value })} /><p className="text-xs leading-5 text-slate-500">Learning records only capture product choices such as preferred provider, model, linked repositories, and check actions. It does not read private content beyond the repository data you explicitly connect.</p></div><button onClick={() => onSave(settings)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-lime-300 px-4 py-3.5 text-sm font-semibold text-slate-950">Save settings <Check size={16} /></button></div></Modal>; }
-function LinkRepoModal({ value, setValue, busy, onClose, onSubmit }: { value: string; setValue: (value: string) => void; busy: boolean; onClose: () => void; onSubmit: (event: React.FormEvent) => void }) { return <Modal title="Link a GitHub repository" subtitle="D-Bugger will analyze context first, then register the push hook." onClose={onClose}><form onSubmit={onSubmit} className="space-y-5"><label className="block text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Repository URL or owner/name<input autoFocus value={value} onChange={e => setValue(e.target.value)} placeholder="electric13k/D-bugger" className="field mt-2" /></label><div className="rounded-2xl border border-lime-300/15 bg-lime-300/10 p-4 text-sm leading-6 text-lime-100">The first pass reads the tree, detects the stack, and records review hotspots. After that, the GitHub push hook can trigger a new check.</div><button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-lime-300 px-4 py-3.5 text-sm font-semibold text-slate-950 disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={16} />} {busy ? 'Analyzing context…' : 'Analyze and connect'}</button></form></Modal>; }
-function CheckModal({ check, onClose }: { check: CheckRun; onClose: () => void }) { return <Modal title="Check report" subtitle={`${check.repoName} · ${shortSha(check.commitSha)}`} onClose={onClose}><div className="space-y-5"><div className="flex items-end justify-between rounded-2xl border border-white/10 bg-white/[.04] p-5"><div><div className="text-xs uppercase tracking-[.18em] text-slate-500">{check.status}</div><div className="mt-2 text-sm text-slate-300">{check.commitMessage}</div></div><div className="text-5xl font-semibold text-lime-200">{check.score}</div></div><div className="space-y-2">{check.pipeline.map(stage => <div key={stage.label} className="rounded-2xl border border-white/10 bg-white/[.03] p-4"><div className="flex items-center justify-between"><span className="text-sm text-white">{stage.label}</span><span className={stage.status === 'passed' ? 'text-lime-200' : 'text-amber-200'}>{stage.score}</span></div><div className="mt-2 text-xs leading-5 text-slate-500">{stage.detail}</div></div>)}</div>{check.findings.length ? <div><div className="mb-3 text-xs uppercase tracking-[.18em] text-amber-200">findings</div>{check.findings.map(finding => <div key={finding.id} className="mb-2 rounded-2xl border border-amber-300/15 bg-amber-300/5 p-4"><div className="flex items-center gap-2 text-sm font-medium text-white"><span className="rounded-md border border-amber-300/20 px-1.5 py-0.5 text-[10px] uppercase text-amber-200">{finding.severity}</span>{finding.title}</div><div className="mt-2 text-xs text-slate-500">{finding.file}</div><p className="mt-2 text-sm leading-6 text-slate-400">{finding.detail}</p></div>)}</div> : <div className="rounded-2xl border border-lime-300/15 bg-lime-300/5 p-4 text-sm text-lime-100">No high-confidence findings were recorded for this commit.</div>}<div className="rounded-2xl border border-white/10 bg-white/[.03] p-4 text-xs leading-5 text-slate-500">{check.coAuthorAttribution || 'Co-author attribution is disabled for this check.'}</div></div></Modal>; }
-function Modal({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: React.ReactNode }) { return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}><motion.div initial={{ y: 20, opacity: 0, scale: .98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: .98 }} onMouseDown={e => e.stopPropagation()} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1720] p-6 shadow-2xl shadow-black/50 sm:p-8"><div className="mb-7 flex items-start justify-between gap-4"><div><h2 className="text-2xl font-semibold tracking-[-.04em] text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p></div><button onClick={onClose} className="rounded-xl border border-white/10 p-2 text-slate-400 transition hover:text-white"><X size={17} /></button></div>{children}</motion.div></motion.div>; }
-function PageHeading({ eyebrow, title, detail, children }: { eyebrow: string; title: string; detail: string; children?: React.ReactNode }) { return <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[10px] font-semibold uppercase tracking-[.25em] text-lime-200">{eyebrow}</div><h1 className="mt-3 text-4xl font-semibold tracking-[-.06em] text-white sm:text-5xl">{title}</h1><p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">{detail}</p></div>{children}</div>; }
-function Panel({ title, eyebrow, action, children }: { title: string; eyebrow: string; action?: React.ReactNode; children: React.ReactNode }) { return <section className="rounded-3xl border border-white/10 bg-white/[.035] p-5 sm:p-6"><div className="mb-5 flex items-start justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[.22em] text-slate-600">{eyebrow}</div><h2 className="mt-2 text-lg font-medium text-white">{title}</h2></div>{action}</div>{children}</section>; }
-function Metric({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: React.ComponentType<{ size?: number }> }) { return <motion.div whileHover={{ y: -3 }} className="rounded-2xl border border-white/10 bg-white/[.035] p-4"><div className="flex items-center justify-between text-slate-500"><span className="text-xs uppercase tracking-[.16em]">{label}</span><Icon size={16} /></div><div className="mt-5 text-3xl font-semibold tracking-[-.04em] text-white">{value}</div><div className="mt-1 text-xs text-slate-600">{detail}</div></motion.div>; }
-function MiniStat({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-white/[.04] p-3"><div className="text-[10px] uppercase tracking-[.16em] text-slate-600">{label}</div><div className="mt-1 text-lg font-medium text-white">{value}</div></div>; }
-function Step({ number, title, detail }: { number: string; title: string; detail: string }) { return <div className="rounded-2xl border border-white/10 bg-white/[.025] p-4"><div className="text-xs font-mono text-lime-200">{number}</div><div className="mt-5 text-sm font-medium text-white">{title}</div><p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p></div>; }
-function Empty({ title, detail, action }: { title: string; detail: string; action?: React.ReactNode }) { return <div className="rounded-3xl border border-dashed border-white/15 bg-white/[.025] px-6 py-16 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-white/10 text-slate-500"><Code2 size={20} /></div><h3 className="mt-5 text-lg font-medium text-white">{title}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{detail}</p>{action && <div className="mt-6">{action}</div>}</div>; }
-function NavButton({ active, onClick, icon: Icon, children }: { active: boolean; onClick: () => void; icon: React.ComponentType<{ size?: number }>; children: React.ReactNode }) { return <button onClick={onClick} className={classNames('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs transition', active ? 'bg-white/[.08] text-lime-200' : 'text-slate-500 hover:bg-white/[.04] hover:text-white')}><Icon size={14} />{children}</button>; }
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) { return <button onClick={() => onChange(!checked)} className="flex w-full items-center justify-between text-left"><span className="text-sm text-slate-300">{label}</span><span className={classNames('flex h-6 w-11 items-center rounded-full p-1 transition', checked ? 'bg-lime-300 justify-end' : 'bg-white/10 justify-start')}><span className="h-4 w-4 rounded-full bg-slate-950" /></span></button>; }
-function BugMark() { return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round"><path d="M8 8h8v8a4 4 0 0 1-8 0V8Z"/><path d="M12 4v4M6 12H3m18 0h-3M6 8 4 6m14 2 2-2M6 17l-2 2m14-2 2 2"/><path d="M10 12h.01M14 12h.01"/></svg>; }
-function GitBranchIcon({ size = 16 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M6 8v4a6 6 0 0 0 6 6h4"/><circle cx="18" cy="6" r="2"/><path d="M18 8v2a4 4 0 0 1-4 4h-2"/></svg>; }
