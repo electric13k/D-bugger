@@ -19,6 +19,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { BugPlaygroundModal } from './components/BugPlaygroundModal';
 import { AddRepoModal } from './components/AddRepoModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
+import { analyzeGitHubRepository, registerGitHubWebhook, registerWebhookSecret, syncRepositoryContext } from './lib/repoContext';
+import { getWorkspaceId, loadCloudflareWorkspace, saveCloudflareWorkspace, recordCloudflareWorkingStyle, readSessionCredential } from './lib/cloudflareWorkspace';
 import { 
   Bot, 
   GitBranch, 
@@ -121,20 +123,16 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Subscribe to Firestore Repos and BugFixRuns
+  // 2. Hydrate the original UI from Cloudflare D1 when the Pages Functions are available.
   useEffect(() => {
-    const unsubRepos = DaemonService.subscribeRepos((data) => {
-      setRepos(data);
+    void getWorkspaceId();
+    loadCloudflareWorkspace().then((state) => {
+      if (!state) return;
+      setRepos(state.repos || []);
+      setFixRuns(state.fixRuns || []);
+      if (state.logs?.length) setLogs(prev => [...state.logs, ...prev].slice(0, 100));
+      if (typeof state.daemonRunning === 'boolean') setDaemonRunning(state.daemonRunning);
     });
-
-    const unsubRuns = DaemonService.subscribeFixRuns((data) => {
-      setFixRuns(data);
-    });
-
-    return () => {
-      unsubRepos();
-      unsubRuns();
-    };
   }, []);
 
   // 3. Background Daemon Heartbeat Poll
@@ -240,6 +238,7 @@ export default function App() {
     try {
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo);
+      void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `Autonomous fix ready: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
       addLog('mcp', `GitHub MCP created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}`, repo.name);
@@ -285,6 +284,7 @@ export default function App() {
     try {
       addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit);
+      void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `AI resolved bug: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
       addLog('mcp', `GitHub MCP: PR #${fixRun.pullRequestNumber} opened on ${repo.name}`, repo.name);
@@ -329,7 +329,9 @@ export default function App() {
 
   // Update repo settings
   const handleUpdateRepo = (repoId: string, updates: Partial<MonitoredRepo>) => {
-    setRepos(prev => prev.map(r => r.id === repoId ? { ...r, ...updates } : r));
+    const nextRepos = repos.map(r => r.id === repoId ? { ...r, ...updates } : r);
+    setRepos(nextRepos);
+    void saveCloudflareWorkspace({ repos: nextRepos, fixRuns, logs, daemonRunning });
     addLog('info', `Updated policy for repository ${repoId}.`);
   };
 
@@ -351,15 +353,36 @@ export default function App() {
 
   // Add custom repo
   const handleAddRepo = async (newRepoData: Omit<MonitoredRepo, 'id' | 'lastCheckedAt' | 'totalFixes'>) => {
-    const created = await DaemonService.addRepo(newRepoData);
-    setRepos(prev => [created, ...prev]);
-    addLog('success', `Added new repository ${created.name} to background daemon monitoring.`);
-    addNotification({
-      title: `Monitored Repo Added`,
-      message: `Now watching commits on ${created.name} with model ${created.openRouterModel}.`,
-      type: 'info',
-      repoName: created.name
-    });
+    const created = await DaemonService.addRepo({ ...newRepoData, contextSyncStatus: 'pending' });
+    let enriched = created;
+    const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
+    if (githubToken) {
+      try {
+        setRepos(prev => [{ ...created, contextSyncStatus: 'syncing' }, ...prev]);
+        const analyzed = await analyzeGitHubRepository(created, githubToken);
+        const contextFile = await syncRepositoryContext(created, githubToken, analyzed.context, analyzed.commit);
+        const webhookSecret = crypto.randomUUID();
+        let webhookConfigured = false;
+        try {
+          await registerGitHubWebhook(created, githubToken, `${window.location.origin}/api/github/webhook`, webhookSecret);
+          await registerWebhookSecret(created.name, webhookSecret);
+          webhookConfigured = true;
+        } catch (webhookError: any) {
+          addLog('warn', `context.md synced, but push webhook setup needs a retry: ${webhookError.message || 'GitHub rejected the hook.'}`, created.name);
+        }
+        enriched = { ...created, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced', lastContextSyncedAt: Date.now(), webhookConfigured, isAnalyzingContext: false };
+        addLog('success', `Indexed ${analyzed.context.filesIndexed} files, synced context.md, and ${webhookConfigured ? 'enabled' : 'queued'} push monitoring for ${created.name}.`, created.name);
+        void recordCloudflareWorkingStyle({ type: 'repo_context_synced', metadata: { repo: created.name, files: analyzed.context.filesIndexed, language: analyzed.context.techStack.language } });
+      } catch (error: any) {
+        enriched = { ...created, contextSyncStatus: 'error' };
+        addLog('warn', `Repository added, but context.md could not be synced: ${error.message || 'GitHub write access is required.'}`, created.name);
+      }
+    } else {
+      addLog('info', `Added ${created.name}. Add a GitHub token in API Credentials to analyze the tree and create context.md.`, created.name);
+    }
+    setRepos(prev => [enriched, ...prev.filter(item => item.id !== enriched.id)]);
+    void saveCloudflareWorkspace({ repos: [enriched, ...repos.filter(item => item.id !== enriched.id)], fixRuns, logs, daemonRunning });
+    addNotification({ title: `Monitored Repo Added`, message: `Now watching commits on ${created.name} with model ${created.openRouterModel}.`, type: 'info', repoName: created.name });
   };
 
   // Send summary email
@@ -425,7 +448,7 @@ export default function App() {
             onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
             repos={repos}
             fixRuns={fixRuns}
-            userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+            userEmail={currentUser?.email || ''}
           />
         )}
 
@@ -623,7 +646,7 @@ export default function App() {
         isOpen={emailModalOpen}
         onClose={() => setEmailModalOpen(false)}
         fixRuns={fixRuns}
-        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        userEmail={currentUser?.email || ''}
         onSendEmail={handleSendEmail}
       />
 
@@ -640,7 +663,7 @@ export default function App() {
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        userEmail={currentUser?.email || ''}
         onSaveSettings={(s) => {
           addLog('info', `Saved global configuration. Default model set to: ${s.defaultModel}`);
           addNotification({
@@ -664,7 +687,7 @@ export default function App() {
         isOpen={addRepoOpen}
         onClose={() => setAddRepoOpen(false)}
         onAddRepo={handleAddRepo}
-        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        userEmail={currentUser?.email || ''}
       />
 
       {/* Interactive API Key, AI Models & Integrations Prompt Wizard */}

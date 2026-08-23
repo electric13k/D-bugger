@@ -30,10 +30,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   userEmail,
   onSaveSettings
 }) => {
-  const [openRouterKey, setOpenRouterKey] = useState(localStorage.getItem('repoheal_openrouter_key') || '');
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('repoheal_github_token') || '');
+  const [openRouterKey, setOpenRouterKey] = useState(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key') || '');
+  const [githubToken, setGithubToken] = useState(sessionStorage.getItem('dbugger_github_token') || localStorage.getItem('repoheal_github_token') || '');
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
-  const [alertEmail, setAlertEmail] = useState(userEmail || localStorage.getItem('repoheal_alert_email') || 'hussainamin462@gmail.com');
+  const [alertEmail, setAlertEmail] = useState(userEmail || localStorage.getItem('repoheal_alert_email') || '');
   const [pollInterval, setPollInterval] = useState(Number(localStorage.getItem('repoheal_poll_interval') || 30));
   const [defaultModel, setDefaultModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
   const [minSecurityScore, setMinSecurityScore] = useState(Number(localStorage.getItem('repoheal_min_security') || 85));
@@ -53,8 +53,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('repoheal_openrouter_key', openRouterKey);
-    localStorage.setItem('repoheal_github_token', githubToken);
+    if (openRouterKey) sessionStorage.setItem('dbugger_openrouter_key', openRouterKey);
+    if (githubToken) sessionStorage.setItem('dbugger_github_token', githubToken);
     localStorage.setItem('dbugger_slack_webhook', slackWebhook);
     localStorage.setItem('repoheal_alert_email', alertEmail);
     localStorage.setItem('repoheal_poll_interval', String(pollInterval));
@@ -192,11 +192,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-1">
             <label className="text-[#121212] font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <Mail className="h-3.5 w-3.5 text-black" />
-              Developer Notification Email:
+              Developer Notification Email (Optional):
             </label>
             <input
               type="email"
-              required
               value={alertEmail}
               onChange={(e) => setAlertEmail(e.target.value)}
               placeholder="developer@company.com"

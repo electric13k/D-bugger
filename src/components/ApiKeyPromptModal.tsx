@@ -33,11 +33,11 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
   onClose,
   onSaveKeys
 }) => {
-  const [openRouterKey, setOpenRouterKey] = useState(localStorage.getItem('repoheal_openrouter_key') || '');
+  const [openRouterKey, setOpenRouterKey] = useState(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key') || '');
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('repoheal_github_token') || '');
+  const [githubToken, setGithubToken] = useState(sessionStorage.getItem('dbugger_github_token') || localStorage.getItem('repoheal_github_token') || '');
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
-  const [useFreeTier, setUseFreeTier] = useState(!localStorage.getItem('repoheal_openrouter_key'));
+  const [useFreeTier, setUseFreeTier] = useState(!sessionStorage.getItem('dbugger_openrouter_key') && !localStorage.getItem('repoheal_openrouter_key'));
 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
@@ -69,9 +69,9 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const effectiveKey = useFreeTier ? '' : openRouterKey.trim();
-    localStorage.setItem('repoheal_openrouter_key', effectiveKey);
+    if (effectiveKey) sessionStorage.setItem('dbugger_openrouter_key', effectiveKey); else sessionStorage.removeItem('dbugger_openrouter_key');
     localStorage.setItem('repoheal_default_model', selectedModel);
-    localStorage.setItem('repoheal_github_token', githubToken.trim());
+    if (githubToken.trim()) sessionStorage.setItem('dbugger_github_token', githubToken.trim());
     localStorage.setItem('dbugger_slack_webhook', slackWebhook.trim());
 
     onSaveKeys({

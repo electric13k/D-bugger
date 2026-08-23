@@ -55,8 +55,8 @@ export const Homepage: React.FC<HomepageProps> = ({
   userEmail,
 }) => {
   // Integration States
-  const [openRouterKey, setOpenRouterKey] = useState(localStorage.getItem('repoheal_openrouter_key') || '');
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('repoheal_github_token') || '');
+  const [openRouterKey, setOpenRouterKey] = useState(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key') || '');
+  const [githubToken, setGithubToken] = useState(sessionStorage.getItem('dbugger_github_token') || localStorage.getItem('repoheal_github_token') || '');
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
@@ -78,7 +78,7 @@ export const Homepage: React.FC<HomepageProps> = ({
 
   const handleSaveOpenRouter = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('repoheal_openrouter_key', openRouterKey);
+    if (openRouterKey) sessionStorage.setItem('dbugger_openrouter_key', openRouterKey);
     localStorage.setItem('repoheal_default_model', selectedModel);
     setKeySaved(true);
     setTimeout(() => setKeySaved(false), 2500);
@@ -86,7 +86,7 @@ export const Homepage: React.FC<HomepageProps> = ({
 
   const handleSaveGitHub = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('repoheal_github_token', githubToken);
+    if (githubToken) sessionStorage.setItem('dbugger_github_token', githubToken);
     setGhSaved(true);
     setTimeout(() => setGhSaved(false), 2500);
   };
@@ -242,7 +242,7 @@ export const Homepage: React.FC<HomepageProps> = ({
             </div>
 
             <div className="pt-2 border-t border-black/10 text-[10px] font-mono text-[#121212]/60 text-center">
-              Target: <strong className="text-black">{userEmail || 'hussainamin462@gmail.com'}</strong>
+              Target: <strong className="text-black">{userEmail || 'not configured'}</strong>
             </div>
           </div>
         </div>

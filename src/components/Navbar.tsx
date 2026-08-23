@@ -62,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onClearAllNotifications,
 }) => {
   const [authLoading, setAuthLoading] = useState(false);
-  const hasCustomKey = typeof window !== 'undefined' && Boolean(localStorage.getItem('repoheal_openrouter_key'));
+  const hasCustomKey = typeof window !== 'undefined' && Boolean(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key'));
 
   const handleAuth = async () => {
     if (currentUser) {

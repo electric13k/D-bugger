@@ -34,7 +34,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
   const [autoSweepOnPush, setAutoSweepOnPush] = useState(true);
   const [securityThreshold, setSecurityThreshold] = useState(85);
   const [emailAlerts, setEmailAlerts] = useState(true);
-  const [alertEmail, setAlertEmail] = useState(userEmail || 'hussainamin462@gmail.com');
+  const [alertEmail, setAlertEmail] = useState(userEmail || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
@@ -212,8 +212,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
           {/* Email Alert */}
           <div className="space-y-1">
             <label className="text-[#121212] font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-              <Mail className="h-3.5 w-3.5 text-black" />
-              Email Alert Recipient:
+              <Mail className="h-3.5 w-3.5 text-black" />              Alert Recipient (Optional):
             </label>
             <input
               type="email"
