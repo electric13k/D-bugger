@@ -18,6 +18,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { BugPlaygroundModal } from './components/BugPlaygroundModal';
 import { AddRepoModal } from './components/AddRepoModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
+import { EmailAuthModal } from './components/EmailAuthModal';
 import { analyzeGitHubRepository, syncRepositoryContext } from './lib/repoContext';
 import { getWorkspaceId, loadCloudflareWorkspace, saveCloudflareWorkspace, recordCloudflareWorkingStyle, readSessionCredential } from './lib/cloudflareWorkspace';
 import { 
@@ -108,6 +109,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bugPlaygroundOpen, setBugPlaygroundOpen] = useState(false);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
+  const [emailAuthOpen, setEmailAuthOpen] = useState(false);
 
   // 1. Listen to the reliable Cloudflare workspace auth state.
   useEffect(() => {
@@ -434,6 +436,7 @@ export default function App() {
         onOpenUndoCenter={() => setUndoCenterOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
+        onOpenEmailAuth={() => setEmailAuthOpen(true)}
         currentUser={currentUser}
         isCycling={isCycling}
         notifications={notifications}
@@ -628,6 +631,11 @@ export default function App() {
       </main>
 
       {/* 3. Modals */}
+
+      <EmailAuthModal
+        isOpen={emailAuthOpen}
+        onClose={() => setEmailAuthOpen(false)}
+      />
       
       {/* Code Diff Viewer Modal */}
       <CodeDiffModal

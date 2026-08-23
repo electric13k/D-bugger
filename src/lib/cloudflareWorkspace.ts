@@ -19,6 +19,10 @@ export function getWorkspaceId() {
   return created;
 }
 
+export function setWorkspaceId(workspaceId: string) {
+  if (typeof window !== 'undefined' && workspaceId) window.localStorage.setItem(WORKSPACE_KEY, workspaceId);
+}
+
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(path, {
     ...init,

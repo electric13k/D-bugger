@@ -21,7 +21,7 @@ import {
   Home,
   Key
 } from 'lucide-react';
-import { signInWithWorkspace, signOutWorkspace, WorkspaceUser } from '../lib/workspaceAuth';
+import { signOutWorkspace, WorkspaceUser } from '../lib/workspaceAuth';
 import { NotificationCenter } from './NotificationCenter';
 import { InAppNotification } from '../types';
 
@@ -36,6 +36,7 @@ interface NavbarProps {
   onOpenUndoCenter: () => void;
   onOpenSettings: () => void;
   onOpenApiKeyPrompt: () => void;
+  onOpenEmailAuth: () => void;
   currentUser: WorkspaceUser | null;
   isCycling: boolean;
   notifications: InAppNotification[];
@@ -54,27 +55,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUndoCenter,
   onOpenSettings,
   onOpenApiKeyPrompt,
+  onOpenEmailAuth,
   currentUser,
   isCycling,
   notifications,
   onMarkAllNotificationsRead,
   onClearAllNotifications,
 }) => {
-  const [authLoading, setAuthLoading] = useState(false);
   const hasCustomKey = typeof window !== 'undefined' && Boolean(localStorage.getItem('repoheal_openrouter_key'));
 
   const handleAuth = async () => {
     if (currentUser) {
       await signOutWorkspace();
     } else {
-      setAuthLoading(true);
-      try {
-        await signInWithWorkspace();
-      } catch (err: any) {
-        console.warn('Auth popup exception:', err);
-      } finally {
-        setAuthLoading(false);
-      }
+      onOpenEmailAuth();
     }
   };
 
@@ -265,7 +259,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 id="btn-login-google"
                 onClick={handleAuth}
-                disabled={authLoading}
                 className="flex items-center gap-1.5 border border-black bg-white px-2.5 py-1.5 text-xs font-sans font-bold uppercase tracking-wider text-[#121212] hover:bg-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
               >
                 <LogIn className="h-3.5 w-3.5 text-black" />

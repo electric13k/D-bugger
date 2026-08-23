@@ -18,9 +18,9 @@ D-Bugger is the restored original D-Bugger application for automated GitHub code
 
 ## Authentication and credentials
 
-The application UI sign-in uses `src/lib/workspaceAuth.ts`, not the Firebase Google popup. Clicking `SIGN IN` creates or restores a stable anonymous D-Bugger workspace identity in the browser and changes the existing Navbar profile presentation to `Workspace Operator`. It does not ask for an email and does not open a popup. This is workspace access rather than secure organization identity. Cloudflare Access can be added later if organization-level authentication is required.
+The application UI sign-in uses `src/lib/workspaceAuth.ts`, not the Firebase Google popup. Clicking `SIGN IN` opens the incremental D-Bugger email auth modal, where a user can create an account or sign in with an email address and password. Successful accounts use D1-backed `auth_users` and opaque HttpOnly `auth_sessions` cookies; the account also restores its attached D-Bugger workspace ID. Existing guest workspace access remains available as a compatibility fallback. The flow does not open a popup or repeatedly request an email. Cloudflare Access can be added later if organization-level authentication is required.
 
-Firebase remains in the repository because the original daemon service and data contract still reference it; do not remove it casually. The UI sign-in listener and Navbar actions intentionally bypass Firebase popup authentication because the Pages-origin popup flow was unreliable.
+Firebase remains in the repository because the original daemon service and data contract still reference it; do not remove it casually. The UI sign-in listener and Navbar actions intentionally bypass Firebase popup authentication because the Pages-origin popup flow was unreliable. Auth routes are under `functions/api/auth/` and the schema migration is `d1/002_email_auth.sql`.
 
 User-owned OpenRouter and GitHub credentials are session-only. Use `dbugger_openrouter_key` and `dbugger_github_token`; legacy `repoheal_*` values may be read only as migration fallbacks. Never commit credentials or hardcode personal email addresses.
 
