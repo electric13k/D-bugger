@@ -89,6 +89,12 @@ export interface MonitoredRepo {
   contextAnalysis?: RepoContextAnalysis;
   contributors?: ContributorInfo[];
   isAnalyzingContext?: boolean;
+  webhookConfigured?: boolean;
+  contextFilePath?: string;
+  contextFileSha?: string;
+  contextFileUrl?: string;
+  contextSyncStatus?: 'pending' | 'syncing' | 'synced' | 'error';
+  lastContextSyncedAt?: number;
 }
 
 export interface AgentThoughtStep {

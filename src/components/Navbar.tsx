@@ -21,8 +21,7 @@ import {
   Home,
   Key
 } from 'lucide-react';
-import { auth, loginWithGoogle, logoutUser } from '../lib/firebase';
-import { User } from 'firebase/auth';
+import { signInWithWorkspace, signOutWorkspace, WorkspaceUser } from '../lib/workspaceAuth';
 import { NotificationCenter } from './NotificationCenter';
 import { InAppNotification } from '../types';
 
@@ -37,7 +36,7 @@ interface NavbarProps {
   onOpenUndoCenter: () => void;
   onOpenSettings: () => void;
   onOpenApiKeyPrompt: () => void;
-  currentUser: User | null;
+  currentUser: WorkspaceUser | null;
   isCycling: boolean;
   notifications: InAppNotification[];
   onMarkAllNotificationsRead: () => void;
@@ -66,11 +65,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleAuth = async () => {
     if (currentUser) {
-      await logoutUser();
+      await signOutWorkspace();
     } else {
       setAuthLoading(true);
       try {
-        await loginWithGoogle();
+        await signInWithWorkspace();
       } catch (err: any) {
         console.warn('Auth popup exception:', err);
       } finally {

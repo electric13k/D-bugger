@@ -31,7 +31,7 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
   userEmail,
   onSendEmail
 }) => {
-  const [recipient, setRecipient] = useState(userEmail || 'hussainamin462@gmail.com');
+  const [recipient, setRecipient] = useState(userEmail || '');
   const [isSending, setIsSending] = useState(false);
   const [sentSuccess, setSentSuccess] = useState(false);
 

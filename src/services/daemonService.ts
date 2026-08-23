@@ -398,7 +398,7 @@ export class DaemonService {
       mcpToolLogs: mcpLogs,
       emailSent: repo.emailAlerts,
       emailSentAt: repo.emailAlerts ? Date.now() : undefined,
-      emailRecipient: repo.alertEmail || 'hussainamin462@gmail.com',
+      emailRecipient: repo.alertEmail || undefined,
       slackSent: !!repo.slackWebhookUrl,
       slackSentAt: repo.slackWebhookUrl ? Date.now() : undefined,
       canUndo: true,

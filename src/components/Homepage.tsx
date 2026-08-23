@@ -242,7 +242,7 @@ export const Homepage: React.FC<HomepageProps> = ({
             </div>
 
             <div className="pt-2 border-t border-black/10 text-[10px] font-mono text-[#121212]/60 text-center">
-              Target: <strong className="text-black">{userEmail || 'hussainamin462@gmail.com'}</strong>
+              Target: <strong className="text-black">{userEmail || 'workspace only'}</strong>
             </div>
           </div>
         </div>

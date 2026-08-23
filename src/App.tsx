@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth } from './lib/firebase';
+import { WorkspaceUser, onWorkspaceAuthStateChanged } from './lib/workspaceAuth';
 import { MonitoredRepo, BugFixRun, DaemonLog, InAppNotification } from './types';
 import { DaemonService } from './services/daemonService';
 import { DEMO_PRESET_REPOS } from './data/models';
@@ -19,6 +18,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { BugPlaygroundModal } from './components/BugPlaygroundModal';
 import { AddRepoModal } from './components/AddRepoModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
+import { analyzeGitHubRepository, syncRepositoryContext } from './lib/repoContext';
+import { getWorkspaceId, loadCloudflareWorkspace, saveCloudflareWorkspace, recordCloudflareWorkingStyle, readSessionCredential } from './lib/cloudflareWorkspace';
 import { 
   Bot, 
   GitBranch, 
@@ -39,7 +40,7 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<WorkspaceUser | null>(null);
   const [repos, setRepos] = useState<MonitoredRepo[]>(DEMO_PRESET_REPOS);
   const [fixRuns, setFixRuns] = useState<BugFixRun[]>([]);
   const [daemonRunning, setDaemonRunning] = useState(true);
@@ -108,36 +109,28 @@ export default function App() {
   const [bugPlaygroundOpen, setBugPlaygroundOpen] = useState(false);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
 
-  // 1. Listen to Firebase Auth state
+  // 1. Listen to the reliable Cloudflare workspace auth state.
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onWorkspaceAuthStateChanged((user) => {
       setCurrentUser(user);
-      if (user?.email) {
-        DaemonService.initializeDefaults(user.email);
-      } else {
-        DaemonService.initializeDefaults();
-      }
+      void DaemonService.initializeDefaults(user?.email || undefined);
     });
     return () => unsubscribe();
   }, []);
 
-  // 2. Subscribe to Firestore Repos and BugFixRuns
+  // 2. Hydrate the original UI from Cloudflare D1 when the Pages Functions are available.
   useEffect(() => {
-    const unsubRepos = DaemonService.subscribeRepos((data) => {
-      setRepos(data);
+    void getWorkspaceId();
+    loadCloudflareWorkspace().then((state) => {
+      if (!state) return;
+      setRepos(state.repos || []);
+      setFixRuns(state.fixRuns || []);
+      if (state.logs?.length) setLogs(prev => [...state.logs, ...prev].slice(0, 100));
+      if (typeof state.daemonRunning === 'boolean') setDaemonRunning(state.daemonRunning);
     });
-
-    const unsubRuns = DaemonService.subscribeFixRuns((data) => {
-      setFixRuns(data);
-    });
-
-    return () => {
-      unsubRepos();
-      unsubRuns();
-    };
   }, []);
 
-  // 3. Background Daemon Heartbeat Poll
+  // 3. Background Daemon Heartbeat Poll plus D1-backed GitHub push context refresh.
   useEffect(() => {
     if (!daemonRunning) return;
 
@@ -157,10 +150,32 @@ export default function App() {
       } catch (e) {
         // graceful offline fallback pulse
       }
+
+      const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
+      if (!githubToken) return;
+      for (const repo of repos.filter(item => item.autoSweepOnPush !== false)) {
+        try {
+          const eventResponse = await fetch(`/api/github/events?repo=${encodeURIComponent(repo.name)}&limit=1`, { cache: 'no-store' });
+          if (!eventResponse.ok) continue;
+          const eventData = await eventResponse.json();
+          const event = eventData.events?.[0];
+          if (!event?.commit_sha || event.commit_sha === repo.lastCommitSha || String(event.commit_message || '').includes('[dbugger-context]')) continue;
+          addLog('mcp', `Push event received for ${repo.name}; refreshing context.md before review.`, repo.name);
+          const analyzed = await analyzeGitHubRepository(repo, githubToken);
+          const contextFile = await syncRepositoryContext(repo, githubToken, analyzed.context, analyzed.commit);
+          const enriched = { ...repo, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced' as const, lastContextSyncedAt: Date.now() };
+          setRepos(prev => prev.map(item => item.id === repo.id ? enriched : item));
+          void saveCloudflareWorkspace({ repos: repos.map(item => item.id === repo.id ? enriched : item), fixRuns, logs, daemonRunning });
+          void recordCloudflareWorkingStyle({ type: 'push_context_refreshed', metadata: { repo: repo.name, commit: analyzed.commit.sha } });
+          await handleScanRepo(enriched);
+        } catch (error: any) {
+          addLog('warn', `Push context refresh skipped for ${repo.name}: ${error.message || 'GitHub write access is required.'}`, repo.name);
+        }
+      }
     }, 15000);
 
     return () => clearInterval(interval);
-  }, [daemonRunning]);
+  }, [daemonRunning, repos]);
 
   // Helper to add In-App Notification
   const addNotification = (notif: Omit<InAppNotification, 'id' | 'timestamp' | 'read'>) => {
@@ -240,6 +255,7 @@ export default function App() {
     try {
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo);
+      void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `Autonomous fix ready: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
       addLog('mcp', `GitHub MCP created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}`, repo.name);
@@ -285,6 +301,7 @@ export default function App() {
     try {
       addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit);
+      void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `AI resolved bug: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
       addLog('mcp', `GitHub MCP: PR #${fixRun.pullRequestNumber} opened on ${repo.name}`, repo.name);
@@ -329,7 +346,9 @@ export default function App() {
 
   // Update repo settings
   const handleUpdateRepo = (repoId: string, updates: Partial<MonitoredRepo>) => {
-    setRepos(prev => prev.map(r => r.id === repoId ? { ...r, ...updates } : r));
+    const nextRepos = repos.map(r => r.id === repoId ? { ...r, ...updates } : r);
+    setRepos(nextRepos);
+    void saveCloudflareWorkspace({ repos: nextRepos, fixRuns, logs, daemonRunning });
     addLog('info', `Updated policy for repository ${repoId}.`);
   };
 
@@ -351,15 +370,27 @@ export default function App() {
 
   // Add custom repo
   const handleAddRepo = async (newRepoData: Omit<MonitoredRepo, 'id' | 'lastCheckedAt' | 'totalFixes'>) => {
-    const created = await DaemonService.addRepo(newRepoData);
-    setRepos(prev => [created, ...prev]);
-    addLog('success', `Added new repository ${created.name} to background daemon monitoring.`);
-    addNotification({
-      title: `Monitored Repo Added`,
-      message: `Now watching commits on ${created.name} with model ${created.openRouterModel}.`,
-      type: 'info',
-      repoName: created.name
-    });
+    const created = await DaemonService.addRepo({ ...newRepoData, contextSyncStatus: 'pending' });
+    let enriched = created;
+    const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
+    if (githubToken) {
+      try {
+        setRepos(prev => [{ ...created, contextSyncStatus: 'syncing' }, ...prev]);
+        const analyzed = await analyzeGitHubRepository(created, githubToken);
+        const contextFile = await syncRepositoryContext(created, githubToken, analyzed.context, analyzed.commit);
+        enriched = { ...created, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced', lastContextSyncedAt: Date.now(), isAnalyzingContext: false };
+        addLog('success', `Indexed ${analyzed.context.filesIndexed} files and synced context.md in ${created.name}.`, created.name);
+        void recordCloudflareWorkingStyle({ type: 'repo_context_synced', metadata: { repo: created.name, files: analyzed.context.filesIndexed, language: analyzed.context.techStack.language } });
+      } catch (error: any) {
+        enriched = { ...created, contextSyncStatus: 'error' };
+        addLog('warn', `Repository added, but context.md could not be synced: ${error.message || 'GitHub write access is required.'}`, created.name);
+      }
+    } else {
+      addLog('info', `Added ${created.name}. Add a GitHub token in API Credentials to analyze the tree and create context.md.`, created.name);
+    }
+    setRepos(prev => [enriched, ...prev.filter(item => item.id !== enriched.id)]);
+    void saveCloudflareWorkspace({ repos: [enriched, ...repos.filter(item => item.id !== enriched.id)], fixRuns, logs, daemonRunning });
+    addNotification({ title: `Monitored Repo Added`, message: `Now watching commits on ${created.name} with model ${created.openRouterModel}.`, type: 'info', repoName: created.name });
   };
 
   // Send summary email
@@ -425,7 +456,7 @@ export default function App() {
             onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
             repos={repos}
             fixRuns={fixRuns}
-            userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+            userEmail={currentUser?.email || ''}
           />
         )}
 
@@ -623,7 +654,7 @@ export default function App() {
         isOpen={emailModalOpen}
         onClose={() => setEmailModalOpen(false)}
         fixRuns={fixRuns}
-        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        userEmail={currentUser?.email || ''}
         onSendEmail={handleSendEmail}
       />
 
@@ -640,7 +671,7 @@ export default function App() {
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        userEmail={currentUser?.email || ''}
         onSaveSettings={(s) => {
           addLog('info', `Saved global configuration. Default model set to: ${s.defaultModel}`);
           addNotification({
@@ -664,7 +695,7 @@ export default function App() {
         isOpen={addRepoOpen}
         onClose={() => setAddRepoOpen(false)}
         onAddRepo={handleAddRepo}
-        userEmail={currentUser?.email || 'hussainamin462@gmail.com'}
+        userEmail={currentUser?.email || ''}
       />
 
       {/* Interactive API Key, AI Models & Integrations Prompt Wizard */}
