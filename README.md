@@ -15,7 +15,13 @@ There is no external hosted SQL dependency, email sign-in flow, or external team
 3. Linking a repository reads the default branch tree, detects the stack, records likely hotspots, and registers a signed GitHub push webhook.
 4. The webhook stores a compact event record in Cloudflare D1. The open dashboard consumes that event and runs the next check with the user’s own GitHub and provider credentials.
 5. Each check is stored with a score, findings, changed files, pipeline stages, and optional `Co-authored-by: D-Bugger <agent@d-bugger.dev>` attribution.
-6. Research briefs are saved in the workspace and can be opened as a topic in Gridscape.
+6. D-Bugger generates or refreshes `context.md` in the connected repository with a compact AI handoff, then saves research briefs in the workspace and can open them as topics in Gridscape.
+
+## Repository context handoff
+
+For every connected repository, D-Bugger writes `context.md` through the GitHub Contents API. The file includes the latest indexed commit, detected technology profile, architecture summary, critical modules, vulnerability hotspots, AI working rules, and the D-Bugger integration marker. It is created during initial linking and refreshed after later push events. Refresh commits use `[dbugger-context]` so D-Bugger does not recursively check its own generated file.
+
+The GitHub token must have repository contents write permission. Context refresh runs in the user’s browser because D-Bugger intentionally does not store user GitHub tokens server-side. If the browser is closed when a push arrives, the webhook is still stored in D1 and the refresh runs the next time the dashboard is open.
 
 ## Local development
 
@@ -32,4 +38,4 @@ The D1 schema is in `d1/schema.sql`. It creates `webhook_secrets`, `webhook_even
 
 ## Safety defaults
 
-D-Bugger starts new repositories in review-required mode. It analyzes and reports first; it does not push code or merge pull requests automatically. Co-author attribution is visible in each check report and can be disabled in the settings model before a repository is linked.
+D-Bugger starts new repositories in review-required mode. It analyzes and reports first; it does not push code changes or merge pull requests automatically. The only automatic repository write is the managed `context.md` AI handoff, created or refreshed after the user explicitly links a repository and provides a GitHub token with contents write access. Co-author attribution is visible in each check report and can be disabled in the settings model before a repository is linked.

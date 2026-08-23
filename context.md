@@ -56,7 +56,7 @@ The D1 schema is in `d1/schema.sql`. Tables currently include `webhook_secrets`,
 |---|---|
 | `src/App.tsx` | Main UI, dashboard state, repository linking, first check, push polling, settings, console, research, and modals |
 | `src/types.ts` | Shared domain types for repositories, checks, research, console events, and settings |
-| `src/lib/api.ts` | GitHub tree/commit access, webhook registration, provider-backed code checks, and research calls |
+| `src/lib/api.ts` | GitHub tree/commit access, webhook registration, repository context.md generation/sync, provider-backed code checks, and research calls |
 | `src/lib/cloudflare.ts` | Stable anonymous workspace ID and Cloudflare workspace label |
 | `src/lib/storage.ts` | D1 state synchronization with local-storage fallback |
 | `src/index.css` | Dark visual system, typography, fields, scrollbar, and base styling |
@@ -75,11 +75,11 @@ The workspace ID is not an authentication credential. It is a stable browser nam
 
 ## Repository linking and checks
 
-The link flow accepts `owner/repository` or a GitHub URL. It fetches the recursive Git tree, detects a basic language/framework/package-manager profile, records critical modules and vulnerability hotspots, generates a webhook secret, registers the GitHub push webhook, stores the secret through `/api/github/register`, and immediately schedules the first check.
+The link flow accepts `owner/repository` or a GitHub URL. It fetches the recursive Git tree, detects a basic language/framework/package-manager profile, records critical modules and vulnerability hotspots, generates or refreshes `context.md` in the connected repository through the GitHub Contents API, generates a webhook secret, registers the GitHub push webhook, stores the secret through `/api/github/register`, and immediately schedules the first check.
 
-Checks fetch the latest branch commit, optionally call the user’s provider API, otherwise use the safe metadata fallback, record findings/pipeline/score, persist the result, and show the report in the Checks view. A browser polling loop checks `/api/github/events` every 30 seconds and starts a check when a newer push event is found.
+Checks fetch the latest branch commit, optionally call the user’s provider API, otherwise use the safe metadata fallback, record findings/pipeline/score, persist the result, and show the report in the Checks view. A browser polling loop checks `/api/github/events` every 30 seconds; when a newer user push is found, it refreshes the connected repository’s `context.md` first, then runs the check. Commits created by D-Bugger itself use `[dbugger-context]` and are ignored to prevent recursive refresh loops.
 
-The app is review-first. It does not push code, merge pull requests, or make automatic repository changes. Co-author attribution is shown in reports when enabled in the repository model.
+The app is review-first. It does not push code changes or merge pull requests automatically. The explicit exception is the managed `context.md` handoff, which D-Bugger may create or refresh after the user links a repository and grants contents write access. Co-author attribution is shown in reports when enabled in the repository model.
 
 ## Gridscape research
 
@@ -105,8 +105,8 @@ When changing D1 schema, update `d1/schema.sql` and apply the migration to the e
 
 ## Known limitations and next sensible improvements
 
-The current workspace identity is anonymous-browser based rather than organization-authenticated. Cloudflare Access is the natural next step if real login, team membership, or protected repository access is required. The browser polling loop is intentionally simple; a future improvement could move check orchestration to a Cloudflare Queue or Durable Object. The code-check fallback is metadata-based when no provider key is supplied; semantic review requires the user’s own provider key.
+The current workspace identity is anonymous-browser based rather than organization-authenticated. Cloudflare Access is the natural next step if real login, team membership, or protected repository access is required. The browser polling loop is intentionally simple; a future improvement could move check orchestration to a Cloudflare Queue or Durable Object. Context refresh is browser-driven because the user’s GitHub token is never stored server-side; if the browser is closed, the D1 webhook event waits until the dashboard is opened. The code-check fallback is metadata-based when no provider key is supplied; semantic review requires the user’s own provider key.
 
 ## AI operating rules
 
-Read this file, `README.md`, `package.json`, `wrangler.toml`, and the specific source files relevant to the requested change before editing. Preserve the Cloudflare D1 architecture. Keep credentials out of commits. Use the existing D-Bugger co-author attribution for commits when appropriate. Validate with `pnpm lint` and `pnpm build`. Update this file whenever architecture, deployment, routes, database schema, or major product behavior changes.
+Read this file, `README.md`, `package.json`, `wrangler.toml`, and the specific source files relevant to the requested change before editing. Preserve the Cloudflare D1 architecture. Keep credentials out of commits. Treat `context.md` as D-Bugger-managed documentation: refresh it when architecture, deployment, routes, database schema, or major product behavior changes, and do not overwrite it with unrelated content. Use the existing D-Bugger co-author attribution for commits when appropriate. Validate with `pnpm lint` and `pnpm build`.

@@ -32,6 +32,10 @@ export interface MonitoredRepo {
   contextAnalysis?: RepoContextAnalysis;
   webhookSecret?: string;
   webhookConfigured?: boolean;
+  contextFilePath?: string;
+  contextFileSha?: string;
+  lastContextSyncedAt?: number;
+  contextSyncStatus?: 'synced' | 'syncing' | 'error';
 }
 
 export interface CheckRun {
