@@ -40,6 +40,7 @@ async function authRequest(path: string, body?: Record<string, unknown>) {
     method: body ? 'POST' : 'GET',
     headers: { 'Content-Type': 'application/json', 'X-Workspace-Id': getWorkspaceId() },
     credentials: 'include',
+    cache: 'no-store',
     body: body ? JSON.stringify(body) : undefined,
   });
   const payload = await response.json().catch(() => ({}));

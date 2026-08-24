@@ -26,6 +26,8 @@ export function setWorkspaceId(workspaceId: string) {
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(path, {
     ...init,
+    credentials: 'include',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json', 'X-Workspace-Id': getWorkspaceId(), ...(init?.headers || {}) },
   });
   if (response.status === 404 || response.status === 501) return null;

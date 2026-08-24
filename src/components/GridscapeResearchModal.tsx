@@ -35,6 +35,8 @@ export const GridscapeResearchModal: React.FC<GridscapeResearchModalProps> = ({ 
     try {
       const response = await fetch('/api/research/gridscape', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic: topic.trim(), githubToken: readSessionCredential('dbugger_github_token', 'repoheal_github_token') }),
       });

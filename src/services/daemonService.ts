@@ -114,6 +114,8 @@ export class DaemonService {
     try {
       const response = await fetch('/api/ai/fix-bug', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           repoName: repo.name,
@@ -263,6 +265,8 @@ export class DaemonService {
       try {
         const deliveryResponse = await fetch('/api/github/deliver-fix', {
           method: 'POST',
+          credentials: 'include',
+          cache: 'no-store',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             owner: repo.owner,
@@ -402,6 +406,8 @@ export class DaemonService {
     try {
       await fetch('/api/slack/send-alert', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           webhookUrl,
@@ -427,6 +433,8 @@ export class DaemonService {
       
       await fetch('/api/email/send-report', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipient,
@@ -449,6 +457,8 @@ export class DaemonService {
       const [owner, repo] = fix.repoName.split('/');
       const response = await fetch('/api/github/undo-fix', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner, repo: repo || fix.repoName, branch: fix.branchName, pullRequestNumber: fix.pullRequestNumber, token, reason }),
       });

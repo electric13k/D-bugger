@@ -19,6 +19,8 @@ export async function researchBeforeFix(repo: { name: string }, details: { commi
   try {
     response = await fetch('/api/research/gridscape', {
       method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, githubToken }),
     });

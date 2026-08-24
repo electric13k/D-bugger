@@ -3,7 +3,7 @@ import type { MonitoredRepo, RepoContextAnalysis } from '../types';
 const githubHeaders = (token: string) => ({ Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' });
 
 async function githubJson(url: string, token: string, init?: RequestInit) {
-  const response = await fetch(url, { ...init, headers: { ...githubHeaders(token), ...(init?.headers || {}) } });
+  const response = await fetch(url, { ...init, cache: 'no-store', headers: { ...githubHeaders(token), ...(init?.headers || {}) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || `GitHub request failed (${response.status})`);
   return data;
@@ -25,8 +25,21 @@ function fileLanguage(path: string) {
   return extension === 'ts' || extension === 'tsx' ? 'typescript' : extension === 'js' || extension === 'jsx' ? 'javascript' : extension === 'py' ? 'python' : extension === 'go' ? 'go' : extension === 'rs' ? 'rust' : extension === 'java' ? 'java' : 'text';
 }
 
+async function resolveBranchCommit(repo: MonitoredRepo, token: string) {
+  const requestedBranch = repo.branch.trim() || 'main';
+  try {
+    return { branch: requestedBranch, commit: await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(requestedBranch)}`, token) };
+  } catch (requestedError: any) {
+    const metadata = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}`, token);
+    const defaultBranch = typeof metadata.default_branch === 'string' ? metadata.default_branch.trim() : '';
+    if (!defaultBranch || defaultBranch === requestedBranch) throw requestedError;
+    return { branch: defaultBranch, commit: await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(defaultBranch)}`, token) };
+  }
+}
+
 export async function fetchRepositoryDebugSnapshot(repo: MonitoredRepo, token: string): Promise<RepositoryDebugSnapshot> {
-  const commit = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(repo.branch)}`, token);
+  const resolved = await resolveBranchCommit(repo, token);
+  const commit = resolved.commit;
   const changedFiles = Array.isArray(commit.files) ? commit.files.filter((file: any) => file?.filename && file.status !== 'removed' && !/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|dist\/|build\/)/i.test(file.filename)).slice(0, 8) : [];
   const files = await Promise.all(changedFiles.map(async (file: any) => {
     let content = '';
@@ -41,11 +54,10 @@ export async function fetchRepositoryDebugSnapshot(repo: MonitoredRepo, token: s
   return { commitSha: commit.sha, commitMessage: commit.commit?.message || '', files };
 }
 
-export async function analyzeGitHubRepository(repo: MonitoredRepo, token: string): Promise<{ context: RepoContextAnalysis; commit: any; tree: any[] }> {
-  const [tree, commit] = await Promise.all([
-    githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/git/trees/${encodeURIComponent(repo.branch)}?recursive=1`, token),
-    githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(repo.branch)}`, token),
-  ]);
+export async function analyzeGitHubRepository(repo: MonitoredRepo, token: string): Promise<{ context: RepoContextAnalysis; commit: any; tree: any[]; branch: string }> {
+  const resolved = await resolveBranchCommit(repo, token);
+  const commit = resolved.commit;
+  const tree = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/git/trees/${encodeURIComponent(commit.sha)}?recursive=1`, token);
   const files = (tree.tree || []).filter((item: any) => item.type === 'blob' && item.path !== 'context.md');
   const extensions = files.map((file: any) => String(file.path).split('.').pop()?.toLowerCase());
   const language = extensions.includes('tsx') || extensions.includes('ts') ? 'TypeScript' : extensions.includes('py') ? 'Python' : extensions.includes('go') ? 'Go' : 'JavaScript';
@@ -59,7 +71,7 @@ export async function analyzeGitHubRepository(repo: MonitoredRepo, token: string
     architectureSummary: `Indexed ${files.length} files from ${repo.name}. The first pass prioritizes entrypoints, server boundaries, and configuration files before review.`,
     contributorSignature: 'D-Bugger <agent@d-bugger.dev>',
   };
-  return { context, commit, tree: files };
+  return { context, commit, tree: files, branch: resolved.branch };
 }
 
 function base64Utf8(value: string) {
@@ -87,7 +99,7 @@ export async function registerGitHubWebhook(repo: MonitoredRepo, token: string, 
 }
 
 export async function registerWebhookSecret(repo: string, secret: string) {
-  return fetch('/api/github/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo, secret }) }).then(async response => {
+  return fetch('/api/github/register', { method: 'POST', credentials: 'include', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo, secret }) }).then(async response => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `Unable to register webhook secret (${response.status})`);
     return payload;
@@ -96,7 +108,7 @@ export async function registerWebhookSecret(repo: string, secret: string) {
 
 export async function syncRepositoryContext(repo: MonitoredRepo, token: string, context: RepoContextAnalysis, commit: any) {
   const endpoint = `https://api.github.com/repos/${repo.owner}/${repo.repo}/contents/context.md`;
-  const existingResponse = await fetch(`${endpoint}?ref=${encodeURIComponent(repo.branch)}`, { headers: githubHeaders(token) });
+  const existingResponse = await fetch(`${endpoint}?ref=${encodeURIComponent(repo.branch)}`, { cache: 'no-store', headers: githubHeaders(token) });
   let sha: string | undefined;
   if (existingResponse.ok) sha = (await existingResponse.json()).sha;
   else if (existingResponse.status !== 404) throw new Error(`Unable to read context.md (${existingResponse.status})`);

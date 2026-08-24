@@ -138,7 +138,7 @@ export default function App() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/daemon/status');
+        const res = await fetch('/api/daemon/status', { credentials: 'include', cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.logs) && data.logs.length > 0) {
@@ -157,15 +157,16 @@ export default function App() {
       if (!githubToken) return;
       for (const repo of repos.filter(item => item.autoSweepOnPush !== false)) {
         try {
-          const eventResponse = await fetch(`/api/github/events?repo=${encodeURIComponent(repo.name)}&limit=1`, { cache: 'no-store' });
+          const eventResponse = await fetch(`/api/github/events?repo=${encodeURIComponent(repo.name)}&limit=1`, { credentials: 'include', cache: 'no-store' });
           if (!eventResponse.ok) continue;
           const eventData = await eventResponse.json();
           const event = eventData.events?.[0];
           if (!event?.commit_sha || event.commit_sha === repo.lastCommitSha || String(event.commit_message || '').includes('[dbugger-context]')) continue;
           addLog('mcp', `Push event received for ${repo.name}; refreshing context.md before review.`, repo.name);
           const analyzed = await analyzeGitHubRepository(repo, githubToken);
-          const contextFile = await syncRepositoryContext(repo, githubToken, analyzed.context, analyzed.commit);
-          const enriched = { ...repo, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced' as const, lastContextSyncedAt: Date.now() };
+          const resolvedRepo = { ...repo, branch: analyzed.branch };
+          const contextFile = await syncRepositoryContext(resolvedRepo, githubToken, analyzed.context, analyzed.commit);
+          const enriched = { ...resolvedRepo, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced' as const, lastContextSyncedAt: Date.now() };
           setRepos(prev => prev.map(item => item.id === repo.id ? enriched : item));
           void saveCloudflareWorkspace({ repos: repos.map(item => item.id === repo.id ? enriched : item), fixRuns, logs, daemonRunning });
           void recordCloudflareWorkingStyle({ type: 'push_context_refreshed', metadata: { repo: repo.name, commit: analyzed.commit.sha } });
@@ -205,6 +206,8 @@ export default function App() {
       setDaemonRunning(nextState);
       await fetch('/api/daemon/toggle', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isRunning: nextState })
       });
@@ -325,6 +328,8 @@ export default function App() {
     addLog('ai', `Sending follow-up question to ${run.modelUsed} about ${run.repoName}/${run.affectedFiles?.[0] || 'the run'}...`, run.repoName);
     const response = await fetch('/api/ai/follow-up', {
       method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: run.modelUsed,
@@ -401,8 +406,9 @@ export default function App() {
       try {
         setRepos(prev => [{ ...created, contextSyncStatus: 'syncing' }, ...prev]);
         const analyzed = await analyzeGitHubRepository(created, githubToken);
-        const contextFile = await syncRepositoryContext(created, githubToken, analyzed.context, analyzed.commit);
-        enriched = { ...created, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced', lastContextSyncedAt: Date.now(), isAnalyzingContext: false };
+        const resolvedRepo = { ...created, branch: analyzed.branch };
+        const contextFile = await syncRepositoryContext(resolvedRepo, githubToken, analyzed.context, analyzed.commit);
+        enriched = { ...resolvedRepo, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced', lastContextSyncedAt: Date.now(), isAnalyzingContext: false };
         addLog('success', `Indexed ${analyzed.context.filesIndexed} files and synced context.md in ${created.name}.`, created.name);
         void recordCloudflareWorkingStyle({ type: 'repo_context_synced', metadata: { repo: created.name, files: analyzed.context.filesIndexed, language: analyzed.context.techStack.language } });
       } catch (error: any) {
@@ -422,6 +428,8 @@ export default function App() {
     try {
       await fetch('/api/email/send-report', {
         method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipient,
