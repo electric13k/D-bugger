@@ -14,7 +14,8 @@ const repository = 'electric13k/Gridscape';
 const githubHeaders = (token?: string) => ({
   Accept: 'application/vnd.github+json',
   'X-GitHub-Api-Version': '2022-11-28',
-  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  'User-Agent': 'D-Bugger-Gridscape-Research',
+  ...(token ? { Authorization: `token ${token}` } : {}),
 });
 
 function decodeBase64(value: string) {
