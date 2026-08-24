@@ -97,7 +97,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Daemon &amp; Model Engine Settings
               </h3>
               <p className="text-xs font-sans text-[#121212]/70">
-                Configure OpenRouter free high-context models, GitHub MCP credentials, Slack webhook, and security gates.
+                Configure your OpenRouter model key for real AI analysis, GitHub credentials for real repository operations, Slack webhook, and security gates.
               </p>
             </div>
           </div>
@@ -117,7 +117,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="border border-black bg-[#F9F7F2] p-3.5 flex items-start gap-2.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
             <Sparkles className="h-4 w-4 text-black shrink-0 mt-0.5" />
             <div className="text-[#121212]">
-              <strong className="font-bold">OpenRouter Free Models Active:</strong> You can use free high-context models like DeepSeek-R1 (128k), Llama 3.3 70B (128k), Qwen 2.5 Coder 32B, and Gemini 2.0 Flash Exp (1M context) out of the box!
+              <strong className="font-bold">Real AI requires your key:</strong> Enter your personal OpenRouter API key to run model analysis and generate patch proposals. Without it, D-Bugger runs diagnostics only.
             </div>
           </div>
 

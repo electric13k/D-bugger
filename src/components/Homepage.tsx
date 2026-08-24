@@ -186,7 +186,7 @@ export const Homepage: React.FC<HomepageProps> = ({
             </p>
 
             <p className="text-xs sm:text-sm font-sans text-[#121212]/85 leading-relaxed">
-              D-Bugger connects OpenRouter free high-context models (DeepSeek-R1 128k, Llama 3.3 70B, Qwen 2.5 Coder, Gemini 2.0 Flash) to your repositories through a background daemon. When commits arrive, D-Bugger parses ASTs, detects flaws, synthesizes defensive patches, validates through a 5-stage security gate, opens Pull Requests, and delivers digests to your email &amp; Slack.
+              D-Bugger reads connected repositories through GitHub and uses your own OpenRouter key for model analysis. When commits arrive, it gathers Gridscape context, diagnoses changed code, proposes a patch, records evidence in the agent console, and only performs GitHub delivery when authorized.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-3">
@@ -383,7 +383,7 @@ export const Homepage: React.FC<HomepageProps> = ({
                   </h3>
                 </div>
                 <span className="text-[10px] font-mono font-bold uppercase bg-emerald-200 text-emerald-950 px-2 py-0.5 border border-black">
-                  Free Tier Ready
+                  {openRouterKey ? 'AI Key Active' : 'Diagnostics Only'}
                 </span>
               </div>
 
@@ -411,13 +411,13 @@ export const Homepage: React.FC<HomepageProps> = ({
 
                 <div>
                   <label className="text-[10px] font-bold uppercase text-[#121212] block mb-1">
-                    OpenRouter API Key (Optional):
+                    OpenRouter API Key (Required for real AI analysis):
                   </label>
                   <input
                     type="password"
                     value={openRouterKey}
                     onChange={(e) => setOpenRouterKey(e.target.value)}
-                    placeholder="sk-or-v1-... (leave blank to use built-in free tier)"
+                    placeholder="sk-or-v1-... (required for real AI analysis)"
                     className="w-full border border-black bg-white px-2.5 py-1.5 text-xs text-[#121212] font-mono focus:outline-none placeholder-[#121212]/40 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                   />
                 </div>
@@ -691,7 +691,7 @@ export const Homepage: React.FC<HomepageProps> = ({
             Ready to inspect your autonomous code fleet?
           </h3>
           <p className="text-xs text-[#121212]/70 font-sans">
-            View active monitored repositories, simulated bug execution history, and security grades in real-time.
+            View active monitored repositories, real diagnostics, evidence-backed fix proposals, and verified GitHub delivery in real-time.
           </p>
         </div>
 
