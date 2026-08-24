@@ -90,7 +90,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
                 Connect GitHub Repository
               </h3>
               <p className="text-xs text-[#121212]/70 font-sans">
-                Continuous Git commit watching &amp; high-context AI bug healing.
+                Read authorized commits, gather context, and produce reviewable AI or diagnostic proposals.
               </p>
             </div>
           </div>

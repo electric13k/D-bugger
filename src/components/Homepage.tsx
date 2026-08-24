@@ -185,7 +185,7 @@ export const Homepage: React.FC<HomepageProps> = ({
             </h1>
             
             <p className="text-base sm:text-lg font-serif-heading text-[#121212]/80 italic">
-              Autonomous, round-the-clock AI bug remediation with 5-stage secure code review pipelines and instant 1-click rollbacks.
+              Evidence-backed GitHub diagnostics, user-owned AI analysis, and reviewable code proposals with verified delivery only when authorized.
             </p>
 
             <p className="text-xs sm:text-sm font-sans text-[#121212]/85 leading-relaxed">
@@ -312,7 +312,7 @@ export const Homepage: React.FC<HomepageProps> = ({
                 Why are there preloaded repositories in this workspace?
               </h3>
               <p className="text-xs font-sans text-[#121212]/80 mt-1 leading-relaxed max-w-3xl">
-                To provide a <strong>safe, zero-risk developer testbench</strong>, D-Bugger includes preset sandbox repositories (e.g., <code>ecommerce-api</code>, <code>auth-gateway</code>, <code>saas-dashboard-v2</code>) with realistic code flaws (memory leaks, SQL injections, race conditions). This lets you immediately test the full OpenRouter high-context model reasoning, 5-stage security review pipeline, and 1-click rollback without needing to grant production repository write permissions upfront.
+                For safe UI inspection, D-Bugger includes preset sandbox records (e.g., <code>ecommerce-api</code>, <code>auth-gateway</code>, <code>saas-dashboard-v2</code>). They are local review data only: they do not call OpenRouter, read GitHub, run tests, create branches, open PRs, or provide rollback evidence.
               </p>
               <p className="text-xs font-sans text-[#121212]/70 mt-1">
                 You can easily clear the sandbox and connect your personal or organization GitHub repositories, or reload demo repositories at any time.
@@ -619,7 +619,7 @@ export const Homepage: React.FC<HomepageProps> = ({
       {/* EDITORIAL HOW IT WORKS SECTION */}
       <section className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <h2 className="font-serif-heading text-xl font-bold uppercase tracking-tight text-[#121212] border-b-2 border-black pb-2 mb-6">
-          The 5-Stage Autonomous Architecture
+          The 5-Stage Evidence Workflow
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 font-sans">
@@ -632,7 +632,7 @@ export const Homepage: React.FC<HomepageProps> = ({
               AST &amp; Call Ingestion
             </h4>
             <p className="text-xs text-[#121212]/75 mt-1 leading-relaxed">
-              Daemon continuously sweeps commit diffs, parsing Abstract Syntax Trees and function call graphs across modified source files.
+              A live sweep reads the connected repository’s current commit, changed-file patch, and available source through the authorized GitHub API.
             </p>
           </div>
 
@@ -644,7 +644,7 @@ export const Homepage: React.FC<HomepageProps> = ({
               Vulnerability Analysis
             </h4>
             <p className="text-xs text-[#121212]/75 mt-1 leading-relaxed">
-              OpenRouter high-context model isolates the root cause (e.g. CWE-89 SQLi, memory leak, mutex deadlock) and models edge cases.
+              With your session-only OpenRouter key, the selected model receives the repository snapshot and automatic Gridscape context and returns a concise analysis summary.
             </p>
           </div>
 
@@ -656,7 +656,7 @@ export const Homepage: React.FC<HomepageProps> = ({
               Defensive Patching
             </h4>
             <p className="text-xs text-[#121212]/75 mt-1 leading-relaxed">
-              Synthesizes minimal, type-safe diffs with comprehensive input sanitization, cleanup handlers, and null checks.
+              The returned model proposal, or a clearly labeled deterministic diagnostic fallback, is shown as code and diff evidence for human review.
             </p>
           </div>
 
@@ -665,10 +665,10 @@ export const Homepage: React.FC<HomepageProps> = ({
               4
             </div>
             <h4 className="font-serif-heading text-sm font-bold text-[#121212]">
-              5-Stage Security Gate
+              Validation Evidence
             </h4>
             <p className="text-xs text-[#121212]/75 mt-1 leading-relaxed">
-              Enforces AST syntax checks, SAST CVE scanning, dependency supply-chain audits, and regression test suites before delivery.
+              Pipeline fields report only stored evidence. D-Bugger does not claim AST, SAST, dependency, legal, or regression results without an independent runner or CI record.
             </p>
           </div>
 
@@ -677,10 +677,10 @@ export const Homepage: React.FC<HomepageProps> = ({
               5
             </div>
             <h4 className="font-serif-heading text-sm font-bold text-[#121212]">
-              MCP PR &amp; 1-Click Rollback
+              Authorized GitHub Delivery
             </h4>
             <p className="text-xs text-[#121212]/75 mt-1 leading-relaxed">
-              Creates GitHub PR via MCP, pushes commit, dispatches email/Slack digests, and stores instant 1-click restore snapshot.
+              Only an authorized, complete GitHub delivery record can expose PR or undo actions. Email and Slack are optional notifications, not proof of delivery or testing.
             </p>
           </div>
 
@@ -691,7 +691,7 @@ export const Homepage: React.FC<HomepageProps> = ({
       <section className="flex flex-col sm:flex-row items-center justify-between gap-4 border-2 border-black bg-[#F9F7F2] p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <div>
           <h3 className="font-serif-heading text-lg font-bold text-[#121212] uppercase tracking-tight">
-            Ready to inspect your autonomous code fleet?
+            Ready to inspect your connected repositories?
           </h3>
           <p className="text-xs text-[#121212]/70 font-sans">
             View active monitored repositories, real diagnostics, evidence-backed fix proposals, and verified GitHub delivery in real-time.

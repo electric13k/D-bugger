@@ -96,7 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#121212]/60 mt-0.5 hidden sm:block">
-                Autonomous AI Bug Remediator
+                GitHub Evidence & AI Review
               </p>
             </div>
           </div>
