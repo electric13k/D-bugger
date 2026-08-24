@@ -35,7 +35,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
   const [alertEmail, setAlertEmail] = useState(userEmail || localStorage.getItem('repoheal_alert_email') || '');
   const [pollInterval, setPollInterval] = useState(Number(localStorage.getItem('repoheal_poll_interval') || 30));
-  const [defaultModel, setDefaultModel] = useState(sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
+  const storedModel = sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || '';
+  const [defaultModel, setDefaultModel] = useState(OPENROUTER_MODELS.some((model) => model.id === storedModel) ? storedModel : (OPENROUTER_MODELS[0]?.id || ''));
   const [minSecurityScore, setMinSecurityScore] = useState(Number(localStorage.getItem('repoheal_min_security') || 85));
   const [browserNotifications, setBrowserNotifications] = useState(
     typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
@@ -131,7 +132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="password"
               value={openRouterKey}
               onChange={(e) => setOpenRouterKey(e.target.value)}
-              placeholder="sk-or-v1-... (leave blank to use system free tier)"
+               placeholder="sk-or-v1-... (required for real AI analysis)"
               className="w-full border border-black bg-[#F9F7F2] px-3 py-2 text-xs text-[#121212] placeholder-[#121212]/40 focus:outline-none font-mono shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
             />
             <p className="text-[11px] text-[#121212]/60">

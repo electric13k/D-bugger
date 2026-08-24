@@ -34,10 +34,10 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
   onSaveKeys
 }) => {
   const [openRouterKey, setOpenRouterKey] = useState(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key') || '');
-  const [selectedModel, setSelectedModel] = useState(sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
+  const storedModel = sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || '';
+  const [selectedModel, setSelectedModel] = useState(OPENROUTER_MODELS.some((model) => model.id === storedModel) ? storedModel : (OPENROUTER_MODELS[0]?.id || ''));
   const [githubToken, setGithubToken] = useState(sessionStorage.getItem('dbugger_github_token') || localStorage.getItem('repoheal_github_token') || '');
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
-  const [useFreeTier, setUseFreeTier] = useState(false);
 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
@@ -68,7 +68,7 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const effectiveKey = useFreeTier ? '' : openRouterKey.trim();
+    const effectiveKey = openRouterKey.trim();
     sessionStorage.setItem('dbugger_openrouter_key', effectiveKey.trim());
     sessionStorage.setItem('dbugger_default_model', selectedModel);
     sessionStorage.setItem('dbugger_github_token', githubToken.trim());
@@ -189,39 +189,17 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                       OpenRouter High-Context AI Models
                     </h4>
                     <p className="text-xs text-[#121212]/80 mt-1 leading-relaxed">
-                      Enter your personal <strong>OpenRouter API Key</strong> for real model analysis and patch proposals. Without a key, D-Bugger runs deterministic diagnostics only and does not claim AI reasoning.
+                      Enter your personal <strong>OpenRouter API Key</strong> for real model analysis and patch proposals. Without a key, no AI run is started.
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Mode Toggle: Free Tier vs Custom API Key */}
-              <div className="flex items-center gap-3 border border-black p-3 bg-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase text-[#121212]">
-                  <input
-                    type="radio"
-                    name="openrouter_mode"
-                    checked={useFreeTier}
-                    onChange={() => setUseFreeTier(true)}
-                    className="accent-black"
-                  />
-                  <span>Diagnostics only (no AI key)</span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase text-[#121212]">
-                  <input
-                    type="radio"
-                    name="openrouter_mode"
-                    checked={!useFreeTier}
-                    onChange={() => setUseFreeTier(false)}
-                    className="accent-black"
-                  />
-                  <span>Enter My OpenRouter API Key</span>
-                </label>
+              <div className="border border-black bg-white p-3 text-xs text-[#121212]/80">
+                AI analysis is unavailable until a user-owned OpenRouter key is entered. Without that key, no AI request is made.
               </div>
 
-              {!useFreeTier && (
-                <div className="space-y-1.5">
+              <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase text-[#121212] flex items-center justify-between">
                     <span>OpenRouter API Key:</span>
                     <a
@@ -240,10 +218,9 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                     placeholder="sk-or-v1-xxxxxxxxxxxxxxxx"
                     className="w-full border border-black bg-[#F9F7F2] px-3 py-2 text-xs text-[#121212] font-mono focus:outline-none placeholder-[#121212]/40 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                   />
-                </div>
-              )}
+              </div>
 
-              {/* Model Choice */}
+              {/* STEP NAVIGATION */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase text-[#121212] block">
                   Select AI Reasoning Engine / Model:
@@ -313,7 +290,7 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                   className="w-full border border-black bg-[#F9F7F2] px-3 py-2 text-xs text-[#121212] font-mono focus:outline-none placeholder-[#121212]/40 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                 />
                 <p className="text-[11px] text-[#121212]/70 font-mono">
-                  A GitHub token is required to read real repositories and deliver real branches, commits, or pull requests. Without one, only explicitly labeled sandbox diagnostics are available.
+                  A GitHub token is required to read repository source and deliver branches, commits, or pull requests. Without a GitHub token and repository, no analysis runs.
                 </p>
               </div>
 

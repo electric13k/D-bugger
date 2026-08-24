@@ -29,7 +29,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
 }) => {
   const [repoSlug, setRepoSlug] = useState('');
   const [branch, setBranch] = useState('main');
-  const [openRouterModel, setOpenRouterModel] = useState('deepseek/deepseek-r1:free');
+  const [openRouterModel, setOpenRouterModel] = useState(OPENROUTER_MODELS[0]?.id || '');
   const [autoMode, setAutoMode] = useState<'pr_only' | 'pr_and_push'>('pr_and_push');
   const [autoSweepOnPush, setAutoSweepOnPush] = useState(true);
   const [securityThreshold, setSecurityThreshold] = useState(85);
@@ -67,7 +67,6 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
         securityThreshold,
         emailAlerts,
         alertEmail,
-        isMockDemo: false,
       });
       onClose();
     } finally {
@@ -181,7 +180,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
           <div className="space-y-1">
             <label className="text-[#121212] font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <GitPullRequest className="h-3.5 w-3.5 text-black" />
-              Autonomous Delivery Mode:
+              Delivery Mode:
             </label>
             <div className="grid grid-cols-2 gap-2">
               <button

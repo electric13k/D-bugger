@@ -31,12 +31,12 @@ async function readGitHubFile(path: string, token?: string) {
   return { path, url: data.html_url || `https://github.com/${repository}/blob/main/${path}`, text: decodeBase64(data.content).slice(0, 12000) };
 }
 
-function offlineResearch(topic: string, sources: Array<{ path: string; url: string; text: string }>) {
+function repositoryGroundedResearch(topic: string, sources: Array<{ path: string; url: string; text: string }>) {
   const context = sources.find((source) => source.path === 'context.md');
   const contract = sources.find((source) => source.path === 'functions/api/generate.ts');
   return {
-    mode: 'repository-grounded-preview',
-    text: `**${topic}** was researched against the Gridscape / Infinity Canvas repository.\n\nGridscape is a React + Vite spatial knowledge explorer. Its research contract is a POST request to /api/generate with a prompt and a JSON response containing explanatory text plus follow-up prompts. ${context ? 'The repository handoff confirms that Gemini synthesis stays server-side and an offline preview remains available.' : ''} ${contract ? 'The current generation route also documents the exact markdown-link format used for branching into connected concepts.' : ''}\n\nThis result is grounded in the repository snapshot. Configure GRIDSCAPE_RESEARCH_URL on D-Bugger if you want live delegation to a deployed Infinity Canvas instance.`,
+    mode: 'repository-grounded',
+    text: `**${topic}** was researched against the Gridscape / Infinity Canvas repository.\n\nGridscape is a React + Vite spatial knowledge explorer. Its research contract is a POST request to /api/generate with a prompt and a JSON response containing explanatory text plus follow-up prompts. ${context ? 'The repository handoff confirms that model synthesis stays server-side.' : ''} ${contract ? 'The current generation route also documents the exact markdown-link format used for branching into connected concepts.' : ''}\n\nThis result is grounded in the repository snapshot. Configure GRIDSCAPE_RESEARCH_URL on D-Bugger if you want live delegation to a deployed Infinity Canvas instance.`,
     prompts: [`What are the core architecture boundaries in Gridscape for ${topic}?`, `How should D-Bugger use Gridscape’s branching research contract for ${topic}?`, `Which Gridscape files should an agent inspect next for ${topic}?`],
     sources: sources.map(({ path, url }) => ({ path, url })),
   };
@@ -61,7 +61,7 @@ export const onRequestPost: PagesFunction<GridscapeResearchEnv> = async ({ reque
       if (delegated.ok && typeof payload.text === 'string') return Response.json({ mode: 'infinity-canvas', text: payload.text, prompts: Array.isArray(payload.prompts) ? payload.prompts.slice(0, 3) : [], sources: sources.map(({ path, url }) => ({ path, url })) });
     }
 
-    return Response.json(offlineResearch(topic, sources), { headers: { 'X-Gridscape-Research-Mode': 'repository-grounded-preview' } });
+    return Response.json(repositoryGroundedResearch(topic, sources), { headers: { 'X-Gridscape-Research-Mode': 'repository-grounded' } });
   } catch (error) {
     console.error('Gridscape research error:', error);
     return Response.json({ error: 'Unable to research through Gridscape right now.' }, { status: 500 });

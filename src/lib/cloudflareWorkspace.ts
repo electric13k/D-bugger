@@ -1,4 +1,4 @@
-import type { BugFixRun, DaemonLog, MonitoredRepo } from '../types';
+import { BugFixRun, DaemonLog, MonitoredRepo } from '../types';
 
 export interface WorkspaceState {
   repos: MonitoredRepo[];
@@ -46,65 +46,42 @@ function hasVerifiedDeliveryEvidence(run: any) {
   );
 }
 
-function normalizeLegacyLog(log: DaemonLog): DaemonLog {
-  const legacyPattern = /(24\/7 autonomous|GitHub MCP bridge mounted|OpenRouter Free High-Context Models synchronized|GitHub MCP Tool Executed|Revert PR|Pushed & Merged)/i;
-  return legacyPattern.test(log.message || '')
-    ? { ...log, level: 'warn', message: `Legacy record retained for audit only; not independently verified: ${log.message}` }
-    : log;
+function isConnectedRepositoryRecord(repo: any) {
+  return Boolean(repo?.isLive === true && typeof repo?.owner === 'string' && repo.owner && typeof repo?.repo === 'string' && repo.repo);
 }
 
-function normalizeLegacyRun(run: BugFixRun): BugFixRun {
-  const verifiedDelivery = hasVerifiedDeliveryEvidence(run);
-  const validationEvidence = Array.isArray(run.mcpToolLogs) && run.mcpToolLogs.some((log: any) =>
-    ['validation', 'test_run', 'ci_result'].includes(log?.tool) && log?.output?.verified === true
+function isRealRunRecord(run: any) {
+  const hasRealModelResponse = Array.isArray(run?.mcpToolLogs) && run.mcpToolLogs.some((log: any) =>
+    log?.tool === 'ai_analysis' && log?.output?.responseReceived === true && log?.output?.mode === 'openrouter-user-key-v2'
   );
-  const existingPipeline: any = run.pipeline || {};
-  const aiLog: any = Array.isArray(run.mcpToolLogs) ? run.mcpToolLogs.find((log: any) => log?.tool === 'ai_analysis') : undefined;
-  const honestDiagnosticTrace = aiLog?.output?.mode === 'deterministic-safe-fallback' || aiLog?.output?.responseReceived === false;
-  if (verifiedDelivery) {
-    return {
-      ...run,
-      pipeline: validationEvidence ? { ...existingPipeline, passed: false } : { ...existingPipeline, passed: false, overallScore: 0 },
-      canUndo: Boolean(run.canUndo),
-    } as BugFixRun;
-  }
-  const legalRiskCheck = existingPipeline.legalRiskCheck || {};
+  return Boolean(
+    run &&
+    typeof run.repoName === 'string' &&
+    typeof run.commitSha === 'string' &&
+    run.commitSha.length >= 20 &&
+    (hasRealModelResponse || hasVerifiedDeliveryEvidence(run))
+  );
+}
+
+function normalizeRunEvidence(run: BugFixRun): BugFixRun {
+  const verifiedDelivery = hasVerifiedDeliveryEvidence(run);
+  const pipeline: any = run.pipeline || {};
   return {
     ...run,
-    status: run.isUndone || run.status === 'undone' ? 'awaiting_human_review' : run.status,
+    status: verifiedDelivery ? run.status : 'awaiting_human_review',
     pullRequestUrl: verifiedDelivery ? run.pullRequestUrl : undefined,
     pullRequestNumber: verifiedDelivery ? run.pullRequestNumber : undefined,
     pushedCommitSha: verifiedDelivery ? run.pushedCommitSha : undefined,
     revertPrUrl: undefined,
-    isUndone: verifiedDelivery ? run.isUndone : undefined,
-    canUndo: verifiedDelivery ? Boolean(run.canUndo) : false,
-    modelUsed: honestDiagnosticTrace ? run.modelUsed : 'legacy-record',
-    aiReasoning: honestDiagnosticTrace ? run.aiReasoning : 'Legacy record retained for audit only; no verified model activity or patch evidence is available.',
-    aiThoughtStream: honestDiagnosticTrace ? run.aiThoughtStream : undefined,
-    agentSteps: honestDiagnosticTrace ? run.agentSteps : undefined,
-    fixedCodeSnippet: honestDiagnosticTrace ? run.fixedCodeSnippet : undefined,
-    patchDiff: honestDiagnosticTrace ? run.patchDiff : '',
-    mcpToolLogs: (Array.isArray(run.mcpToolLogs) ? run.mcpToolLogs : []).filter((log: any) => !['create_branch', 'commit_file', 'create_pull_request', 'revert_commit'].includes(log?.tool) && (honestDiagnosticTrace || log?.tool !== 'ai_analysis')),
+    canUndo: verifiedDelivery && Boolean(run.canUndo),
     pipeline: {
-      ...existingPipeline,
+      ...pipeline,
       passed: false,
-      overallScore: validationEvidence ? (typeof existingPipeline.overallScore === 'number' ? existingPipeline.overallScore : 0) : 0,
-      astSyntaxCheck: validationEvidence ? existingPipeline.astSyntaxCheck : { status: 'warning', message: 'No independent AST/type-check evidence was stored.', score: 0 },
-      securityVulnerabilityScan: validationEvidence ? existingPipeline.securityVulnerabilityScan : { status: 'warning', vulnerabilitiesFound: [], score: 0 },
-      legalRiskCheck: validationEvidence ? legalRiskCheck : {
-        status: 'warning',
-        score: 0,
-        licenseContamination: { status: 'warning', detectedLicenses: [], viralRisk: false, detail: 'No independent license scan evidence was stored.' },
-        secretLeakGuard: { status: 'failed', secretsFound: [], detail: 'No independent secret scan evidence was stored.' },
-        copyrightIntegrity: { status: 'warning', uncreditedCopyDetected: false, detail: 'No independent copyright scan evidence was stored.' },
-        complianceFrameworks: [],
-        legalSignoffSummary: 'Not independently verified; human or CI review is required.',
-      },
-      unitTestVerification: validationEvidence ? existingPipeline.unitTestVerification : { status: 'warning', testsRun: 0, testsPassed: 0, score: 0 },
-      dependencyCheck: validationEvidence ? existingPipeline.dependencyCheck : { status: 'warning', dependenciesAudited: 0, score: 0 },
-      breakingChangeCheck: validationEvidence ? existingPipeline.breakingChangeCheck : { status: 'warning', apiContractsPreserved: false, score: 0 },
-      regressionGuard: validationEvidence ? existingPipeline.regressionGuard : { status: 'warning', confidence: 0 },
+      overallScore: 0,
     },
+    mcpToolLogs: (Array.isArray(run.mcpToolLogs) ? run.mcpToolLogs : []).filter((log: any) =>
+      verifiedDelivery || !['create_branch', 'commit_file', 'create_pull_request', 'revert_commit', 'github_delivery'].includes(log?.tool)
+    ),
   } as BugFixRun;
 }
 
@@ -114,11 +91,13 @@ export async function loadCloudflareWorkspace(): Promise<WorkspaceState | null> 
     const state = payload?.state as WorkspaceState | undefined;
     return state ? {
       ...state,
-      fixRuns: Array.isArray(state.fixRuns) ? state.fixRuns.map(normalizeLegacyRun) : [],
-      logs: Array.isArray(state.logs) ? state.logs.map(normalizeLegacyLog) : [],
+      repos: Array.isArray(state.repos) ? state.repos.filter(isConnectedRepositoryRecord) : [],
+      fixRuns: Array.isArray(state.fixRuns) ? state.fixRuns.filter(isRealRunRecord).map(normalizeRunEvidence) : [],
+      // Start with current telemetry only; removed execution paths must not reappear after reload.
+      logs: [],
     } : null;
   } catch (error) {
-    console.warn('Cloudflare workspace unavailable; using local/Firebase fallback.', error);
+    console.warn('Cloudflare workspace unavailable; no workspace state was loaded.', error);
     return null;
   }
 }
@@ -127,7 +106,7 @@ export async function saveCloudflareWorkspace(state: WorkspaceState) {
   try {
     await request('/api/workspace/state', { method: 'PUT', body: JSON.stringify({ state: { ...state, updatedAt: Date.now() } }) });
   } catch (error) {
-    console.warn('Cloudflare workspace save failed; local UI state remains active.', error);
+    console.warn('Cloudflare workspace save failed; changes were not persisted.', error);
   }
 }
 

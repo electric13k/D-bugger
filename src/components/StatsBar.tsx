@@ -19,7 +19,7 @@ interface StatsBarProps {
 
 export const StatsBar: React.FC<StatsBarProps> = ({ repos, fixRuns, daemonRunning }) => {
   const totalRuns = fixRuns.length;
-  const activeReposCount = repos.filter(r => r.isLive && !r.isMockDemo).length;
+  const activeReposCount = repos.filter(r => r.isLive).length;
   const verifiedRuns = fixRuns.filter(r => r.pullRequestUrl && r.pullRequestNumber && r.pushedCommitSha);
   const undoneCount = fixRuns.filter(r => r.isUndone || r.status === 'undone').length;
   const scoredRuns = fixRuns.filter(r => typeof r.pipeline?.overallScore === 'number' && r.pipeline.overallScore > 0);

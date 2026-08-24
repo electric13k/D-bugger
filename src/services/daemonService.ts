@@ -1,98 +1,11 @@
 import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { MonitoredRepo, BugFixRun, DaemonConfig, EmailReport, AgentStepTrace, InAppNotification, AgentThoughtStep, LegalRiskAudit } from '../types';
-import { DEMO_PRESET_REPOS, BUG_SCENARIOS } from '../data/models';
+import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { MonitoredRepo, BugFixRun, AgentStepTrace, AgentThoughtStep, LegalRiskAudit } from '../types';
 import type { AutoResearchResult } from '../lib/autoResearch';
 import { readSessionCredential } from '../lib/cloudflareWorkspace';
 import type { RepositoryDebugSnapshot } from '../lib/repoContext';
 
 export class DaemonService {
-  // Initialize default repositories in Firestore if empty
-  static async initializeDefaults(userEmail?: string) {
-    try {
-      const reposSnap = await getDocs(collection(db, 'monitored_repos'));
-      if (reposSnap.empty) {
-        for (const repo of DEMO_PRESET_REPOS) {
-          const repoData = {
-            ...repo,
-            alertEmail: userEmail || repo.alertEmail,
-          };
-          await setDoc(doc(db, 'monitored_repos', repo.id), repoData);
-        }
-      }
-    } catch (err) {
-      console.warn('Firestore initial seeding fallback to local cache:', err);
-    }
-  }
-
-  // Clear all demo repositories
-  static async clearDemoRepos() {
-    try {
-      const reposSnap = await getDocs(collection(db, 'monitored_repos'));
-      for (const d of reposSnap.docs) {
-        await deleteDoc(doc(db, 'monitored_repos', d.id));
-      }
-      return true;
-    } catch (err) {
-      console.warn('Error clearing demo repos:', err);
-      return false;
-    }
-  }
-
-  // Reset to default demo repositories
-  static async resetToDemoRepos(userEmail?: string) {
-    try {
-      const reposSnap = await getDocs(collection(db, 'monitored_repos'));
-      for (const d of reposSnap.docs) {
-        await deleteDoc(doc(db, 'monitored_repos', d.id));
-      }
-      for (const repo of DEMO_PRESET_REPOS) {
-        const repoData = {
-          ...repo,
-          alertEmail: userEmail || repo.alertEmail,
-        };
-        await setDoc(doc(db, 'monitored_repos', repo.id), repoData);
-      }
-      return true;
-    } catch (err) {
-      console.warn('Error resetting demo repos:', err);
-      return false;
-    }
-  }
-
-  // Subscribe to monitored repos
-  static subscribeRepos(callback: (repos: MonitoredRepo[]) => void) {
-    try {
-      return onSnapshot(collection(db, 'monitored_repos'), (snapshot) => {
-        const repos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MonitoredRepo));
-        callback(repos);
-      }, (err) => {
-        console.warn('Firestore repos subscription fallback:', err);
-        callback(DEMO_PRESET_REPOS);
-      });
-    } catch (err) {
-      callback(DEMO_PRESET_REPOS);
-      return () => {};
-    }
-  }
-
-  // Subscribe to bug fix runs
-  static subscribeFixRuns(callback: (runs: BugFixRun[]) => void) {
-    try {
-      const q = query(collection(db, 'bug_fix_runs'), orderBy('timestamp', 'desc'), limit(50));
-      return onSnapshot(q, (snapshot) => {
-        const runs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BugFixRun));
-        callback(runs);
-      }, (err) => {
-        console.warn('Firestore fix runs subscription fallback:', err);
-        callback([]);
-      });
-    } catch (err) {
-      callback([]);
-      return () => {};
-    }
-  }
-
   // Add a new repository to monitor
   static async addRepo(repo: Omit<MonitoredRepo, 'id' | 'lastCheckedAt' | 'totalFixes'>) {
     const id = `repo-${Date.now()}`;
@@ -105,7 +18,7 @@ export class DaemonService {
     try {
       await setDoc(doc(db, 'monitored_repos', id), newRepo);
     } catch (e) {
-      console.warn('Using local fallback for repo add', e);
+      console.warn('Firestore repository write failed; the Pages workspace persistence will be attempted.', e);
     }
     return newRepo;
   }
@@ -124,33 +37,27 @@ export class DaemonService {
   // Trigger Bug Fix Cycle via AI and MCP
   static async triggerBugFix(
     repo: MonitoredRepo,
-    scenarioIndex?: number,
-    customCode?: string,
-    customCommit?: string,
-    researchResult?: AutoResearchResult,
-    repositorySnapshot?: RepositoryDebugSnapshot
+    sourceCode: string,
+    customCommit: string,
+    researchResult: AutoResearchResult,
+    repositorySnapshot: RepositoryDebugSnapshot
   ): Promise<BugFixRun> {
-    const scenario = typeof scenarioIndex === 'number' && scenarioIndex >= 0 && BUG_SCENARIOS[scenarioIndex]
-      ? BUG_SCENARIOS[scenarioIndex]
-      : BUG_SCENARIOS[Math.floor(Math.random() * BUG_SCENARIOS.length)];
-    const liveFile = repositorySnapshot?.files[0];
-    const activeScenario = repositorySnapshot && liveFile ? {
-      ...scenario,
+    const liveFile = repositorySnapshot.files[0];
+    if (!liveFile?.path || !sourceCode.trim()) throw new Error('GitHub returned no changed source for analysis.');
+    const activeScenario = {
       file: liveFile.path,
-      originalCode: liveFile.content || liveFile.patch || scenario.originalCode,
-      commitMsg: repositorySnapshot.commitMessage || customCommit || scenario.commitMsg,
-      title: 'Live repository diagnostic and safe code repair',
+      originalCode: liveFile.content || liveFile.patch || sourceCode,
+      commitMsg: repositorySnapshot.commitMessage || customCommit,
+      title: `Repository analysis for ${liveFile.path}`,
       category: 'logic_flaw' as const,
-      severity: 'high' as const,
-      suggestedFix: '',
-      bugExplanation: `Reviewed the latest changed file from commit ${repositorySnapshot.commitSha.slice(0, 8)}. Identify concrete defects, security risks, regressions, and safe improvements from the supplied source and patch rather than assuming a preset scenario.`,
-    } : scenario;
-
-    const commitMsg = customCommit || activeScenario.commitMsg;
-    const originalCode = customCode || activeScenario.originalCode;
-    const commitSha = repositorySnapshot?.commitSha || Math.random().toString(16).substring(2, 9);
-    const branchName = `dbugger/fix-${Date.now().toString(36)}`;
-    const fixId = `fix-${Date.now()}`;
+      severity: 'medium' as const,
+      bugExplanation: `Analyze the changed source from commit ${repositorySnapshot.commitSha.slice(0, 8)} for concrete defects and safe improvements.`,
+    };
+    const commitMsg = customCommit || activeScenario.commitMsg || 'GitHub commit';
+    const originalCode = activeScenario.originalCode;
+    const commitSha = repositorySnapshot.commitSha;
+    const fixId = `fix-${crypto.randomUUID()}`;
+    const branchName = `dbugger/fix-${crypto.randomUUID().slice(0, 8)}`;
 
     // Evidence-based agent trace. Each stage begins pending and is updated only after the corresponding operation returns.
     const agentSteps: AgentStepTrace[] = [
@@ -158,7 +65,7 @@ export class DaemonService {
         id: `step-1-${fixId}`,
         phase: 'ast_ingestion',
         label: 'Repository Evidence Intake',
-        status: repositorySnapshot || originalCode ? 'completed' : 'failed',
+        status: 'completed',
         timestamp: Date.now() - 1400,
         detail: repositorySnapshot ? `Loaded ${repositorySnapshot.files?.length || 0} changed file(s) from commit ${repositorySnapshot.commitSha}. No AST result is claimed until an actual parser or model response provides it.` : 'No live repository snapshot was available for this run.',
         durationMs: 0
@@ -201,7 +108,8 @@ export class DaemonService {
       }
     ];
 
-    // Call server AI endpoint
+    // Call the real user-key OpenRouter endpoint. A failed or malformed response aborts this run;
+    // no alternate diagnosis or synthetic run is created.
     let aiResponse: any;
     try {
       const response = await fetch('/api/ai/fix-bug', {
@@ -215,17 +123,21 @@ export class DaemonService {
           model: repo.openRouterModel,
           userApiKey: readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key'),
           securityThreshold: repo.securityThreshold || 85,
-          researchContext: researchResult?.text || '',
-          researchSources: researchResult?.sources || [],
+          researchContext: researchResult.text || '',
+          researchSources: researchResult.sources || [],
           repositorySnapshot,
         })
       });
-      aiResponse = await response.json();
-    } catch (e) {
-      console.warn('Server AI API error, constructing fallback run:', e);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.success !== true || !payload.data) {
+        throw new Error(payload.error || `OpenRouter analysis failed (${response.status})`);
+      }
+      aiResponse = payload;
+    } catch (error: any) {
+      throw new Error(`OpenRouter analysis failed: ${error?.message || 'no model response returned'}`);
     }
 
-    const modelResponseReceived = Boolean(aiResponse?.success && aiResponse?.data && aiResponse?.mode !== 'deterministic-safe-fallback');
+    const modelResponseReceived = true;
     // Transparent activity summary for the AI Thoughts modal; this is a summary, not hidden chain-of-thought.
     const thoughtStream: AgentThoughtStep[] = [
       {
@@ -301,44 +213,25 @@ export class DaemonService {
       legalSignoffSummary: 'Not independently verified; human or CI review is required before merge.'
     };
 
-    const aiData = aiResponse?.data || {
-      bugTitle: 'AI analysis unavailable',
-      bugCategory: 'other' as const,
-      bugSeverity: 'low' as const,
-      affectedFiles: [activeScenario.file],
-      aiReasoning: 'No model response was returned. No diagnosis or patch is claimed.',
-      fixedCodeSnippet: '',
-      patchDiff: `No patch generated for ${activeScenario.file}; inspect the repository and retry with a configured model key.`,
-      pipeline: {
-        passed: false,
-        overallScore: 0,
-        astSyntaxCheck: { status: 'warning' as const, message: 'No independent AST parser result was returned.', score: 0 },
-        securityVulnerabilityScan: { status: 'warning' as const, vulnerabilitiesFound: [], score: 0 },
-        unitTestVerification: { status: 'warning' as const, testsRun: 0, testsPassed: 0, score: 0 },
-        dependencyCheck: { status: 'warning' as const, dependenciesAudited: 0, score: 0 },
-        breakingChangeCheck: { status: 'warning' as const, apiContractsPreserved: false, score: 0 },
-        regressionGuard: { status: 'warning' as const, confidence: 0 },
-        legalRiskCheck
-      },
-      pullRequestTitle: '',
-      pullRequestBody: ''
-    };
-
-    if (!aiData.pipeline.legalRiskCheck) {
+    const aiData = aiResponse.data;
+    if (!aiData || typeof aiData !== 'object') throw new Error('OpenRouter returned no structured analysis.');
+    if (!aiData.pipeline || typeof aiData.pipeline !== 'object') {
+      aiData.pipeline = { passed: false, overallScore: 0, legalRiskCheck };
+    } else if (!aiData.pipeline.legalRiskCheck) {
       aiData.pipeline.legalRiskCheck = legalRiskCheck;
     }
     const modelReasoningSummary = typeof aiData.aiReasoning === 'string' && aiData.aiReasoning.trim()
       ? aiData.aiReasoning.trim().slice(0, 2400)
-      : 'No model reasoning summary was returned; the deterministic diagnostic result is shown for review.';
+      : 'The model returned no concise reasoning summary; review the returned code and evidence carefully.';
     agentSteps[1].status = modelResponseReceived ? 'completed' : 'failed';
     agentSteps[1].detail = `${modelReasoningSummary} Evidence file: ${activeScenario.file}.`;
     agentSteps[2].status = aiData.fixedCodeSnippet ? 'completed' : 'failed';
     agentSteps[2].detail = `${aiData.fixedCodeSnippet ? 'A corrected code result was returned.' : 'No corrected code was returned.'} The repair decision is based on the supplied repository snapshot and Gridscape research.`;
-    agentSteps[3].status = aiData.pipeline?.passed ? 'completed' : 'failed';
-    agentSteps[3].detail = aiData.pipeline?.passed ? 'The returned pipeline gate passed its reported checks; external CI evidence is still required before merge.' : 'The returned pipeline gate did not pass; no GitHub delivery will be attempted.';
+    agentSteps[3].status = 'pending';
+    agentSteps[3].detail = 'No independent CI or repository test runner has returned validation evidence; GitHub delivery remains disabled.';
     thoughtStream[1].thought = modelReasoningSummary;
     thoughtStream[1].codeInspection = originalCode.slice(0, 700);
-    thoughtStream[1].confidence = aiResponse?.data ? 0 : 0;
+    thoughtStream[1].confidence = 0;
     thoughtStream[1].verdict = modelResponseReceived ? 'passed' : 'warning';
     thoughtStream[2].thought = aiData.fixedCodeSnippet ? `Returned corrected code for ${activeScenario.file}. The result is shown for review before any GitHub mutation.` : `No corrected code was returned for ${activeScenario.file}; no GitHub mutation will be attempted.`;
     thoughtStream[2].codeInspection = (aiData.fixedCodeSnippet || '').slice(0, 700);
@@ -348,13 +241,13 @@ export class DaemonService {
     mcpLogs.push({
       tool: 'gridscape_research',
       timestamp: Date.now(),
-      input: { repository: repo.name, mode: researchResult?.mode || 'local-context-fallback' },
+      input: { repository: repo.name, mode: researchResult.mode },
       output: { summary: (researchResult?.text || 'No research context available.').slice(0, 900), sources: researchResult?.sources || [] },
     });
     mcpLogs.push({
       tool: 'ai_analysis',
       timestamp: Date.now(),
-      input: { model: repo.openRouterModel, file: activeScenario.file, source: repositorySnapshot ? 'live-github-snapshot' : 'sandbox-or-local-context' },
+      input: { model: repo.openRouterModel, file: activeScenario.file, source: 'live-github-snapshot' },
       output: { responseReceived: modelResponseReceived, mode: aiResponse?.mode || 'unknown', reasoningSummary: modelReasoningSummary.slice(0, 900), correctedCodeReturned: Boolean(aiData.fixedCodeSnippet) },
     });
 
@@ -364,7 +257,8 @@ export class DaemonService {
     let prUrl: string | undefined;
     let deliveryError: string | undefined;
     const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
-    const canDeliverRealFix = Boolean(repositorySnapshot && !repo.isMockDemo && githubToken && aiData.pipeline?.passed && aiData.fixedCodeSnippet);
+    const independentValidationEvidence = Array.isArray((aiData as any).validationEvidence) && (aiData as any).validationEvidence.some((item: any) => item?.verified === true);
+    const canDeliverRealFix = Boolean(repositorySnapshot && githubToken && independentValidationEvidence && aiData.fixedCodeSnippet);
     if (canDeliverRealFix) {
       try {
         const deliveryResponse = await fetch('/api/github/deliver-fix', {
@@ -398,7 +292,7 @@ export class DaemonService {
         agentSteps[4].detail = `No GitHub mutation was completed: ${deliveryError}`;
       }
     } else {
-      const reason = repo.isMockDemo ? 'sandbox repository' : !githubToken ? 'GitHub token not configured' : !repositorySnapshot ? 'live repository snapshot unavailable' : !aiData.pipeline?.passed ? 'security/review gate did not pass' : 'no corrected code was produced';
+      const reason = !githubToken ? 'GitHub token not configured' : !repositorySnapshot ? 'live repository snapshot unavailable' : !independentValidationEvidence ? 'independent CI or runner evidence is required before delivery' : !aiData.fixedCodeSnippet ? 'no corrected code was produced' : 'delivery conditions were not met';
       deliveryError = `No real GitHub delivery attempted: ${reason}.`;
       mcpLogs.push({ tool: 'github_delivery', timestamp: Date.now(), input: { owner: repo.owner, repo: repo.repo, filePath: activeScenario.file }, output: { delivered: false, reason } });
       agentSteps[4].status = 'failed';
@@ -420,16 +314,16 @@ export class DaemonService {
       repoName: repo.name,
       commitSha,
       commitMessage: commitMsg,
-      commitAuthor: repositorySnapshot ? 'GitHub repository commit' : 'D-Bugger sandbox scenario',
+      commitAuthor: 'GitHub repository commit',
       timestamp: Date.now(),
-      status: pushedSha ? 'pushed' : deliveryError ? 'awaiting_human_review' : 'pr_created',
+      status: pushedSha ? 'pushed' : 'awaiting_human_review',
       bugCategory: aiData.bugCategory,
       bugSeverity: aiData.bugSeverity,
       bugTitle: aiData.bugTitle,
       bugDescription: aiData.aiReasoning || activeScenario.bugExplanation,
       affectedFiles: aiData.affectedFiles || [activeScenario.file],
       modelUsed: repo.openRouterModel,
-      modelContextTokens: 1420,
+      modelContextTokens: Math.ceil((originalCode.length + researchResult.text.length) / 4),
       aiReasoning: aiData.aiReasoning,
       patchDiff: aiData.patchDiff,
       fixedCodeSnippet: aiData.fixedCodeSnippet,
@@ -438,7 +332,7 @@ export class DaemonService {
       aiThoughtStream: thoughtStream,
       selfCorrectionAttempts: 0,
       pipeline: aiData.pipeline,
-      branchName: deliveredBranch || 'not-created',
+      branchName: deliveredBranch || '',
       pullRequestUrl: prUrl,
       pullRequestNumber: prNumber,
       pushedCommitSha: pushedSha,
@@ -448,7 +342,7 @@ export class DaemonService {
       emailRecipient: repo.alertEmail || undefined,
       slackSent: !!repo.slackWebhookUrl,
       slackSentAt: repo.slackWebhookUrl ? Date.now() : undefined,
-      canUndo: true,
+      canUndo: Boolean(pushedSha && prNumber && prUrl && deliveredBranch),
       isUndone: false,
       manualRevertCommands: manualCommands
     };
@@ -480,10 +374,10 @@ export class DaemonService {
       this.sendSlackAlert(newFixRun, slackUrl);
     }
 
-    // Trigger Browser Notification if permitted
+    // Trigger Browser Notification if permitted. This never claims a fix or PR without GitHub evidence.
     this.triggerBrowserNotification(
-      `D-Bugger: Bug Fixed in ${repo.name}`,
-      `Auto-resolved "${aiData.bugTitle}" with model ${repo.openRouterModel}. PR #${prNumber} opened.`
+      `D-Bugger: Analysis recorded for ${repo.name}`,
+      pushedSha && prNumber ? `Verified GitHub delivery created Pull Request #${prNumber}.` : `Model analysis recorded; no verified GitHub delivery was created.`
     );
 
     return newFixRun;
@@ -528,8 +422,8 @@ export class DaemonService {
   // Send Email Notification
   static async sendEmailNotification(fix: BugFixRun, recipient: string) {
     try {
-      const subject = `[D-Bugger] Autonomous Fix in ${fix.repoName}: ${fix.bugTitle}`;
-      const summary = `Autonomous background fix by ${fix.modelUsed}. Pipeline Score: ${fix.pipeline.overallScore}/100.`;
+      const subject = `[D-Bugger] Repository analysis for ${fix.repoName}: ${fix.bugTitle}`;
+      const summary = `Model analysis recorded for ${fix.repoName}. Recorded pipeline evidence: ${fix.pipeline?.overallScore ?? 0}/100; GitHub delivery is shown only when a verified PR exists.`;
       
       await fetch('/api/email/send-report', {
         method: 'POST',
@@ -539,7 +433,7 @@ export class DaemonService {
           subject,
           summary,
           fixes: [fix.id],
-          htmlContent: `<h2>D-Bugger Autonomous Fix Summary</h2><p>Repository: <b>${fix.repoName}</b></p><p>Bug: <b>${fix.bugTitle}</b> (${fix.bugSeverity})</p><p>Pipeline Security: <b>${fix.pipeline.overallScore}%</b></p><p>PR: <a href="${fix.pullRequestUrl}">${fix.pullRequestUrl}</a></p>`
+          htmlContent: `<h2>D-Bugger Repository Analysis</h2><p>Repository: <b>${fix.repoName}</b></p><p>Finding: <b>${fix.bugTitle}</b> (${fix.bugSeverity})</p><p>Recorded pipeline evidence: <b>${fix.pipeline?.overallScore ?? 0}%</b></p>${fix.pullRequestUrl ? `<p>Verified PR: <a href="${fix.pullRequestUrl}">${fix.pullRequestUrl}</a></p>` : '<p>No verified GitHub PR was created.</p>'}`
         })
       });
     } catch (e) {
@@ -551,7 +445,7 @@ export class DaemonService {
   static async undoFix(fix: BugFixRun, reason: string = 'User requested 1-click rollback') {
     try {
       const token = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
-      if (!token || !fix.pushedCommitSha || !fix.pullRequestUrl || !fix.branchName || fix.branchName === 'not-created') return false;
+      if (!token || !fix.pushedCommitSha || !fix.pullRequestUrl || !fix.pullRequestNumber || !fix.branchName) return false;
       const [owner, repo] = fix.repoName.split('/');
       const response = await fetch('/api/github/undo-fix', {
         method: 'POST',

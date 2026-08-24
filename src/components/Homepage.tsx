@@ -14,13 +14,10 @@ import {
   AlertTriangle, 
   Sparkles, 
   Code2, 
-  Flame, 
   Info, 
   GitBranch, 
   Layers, 
   Check, 
-  RefreshCw,
-  Trash2,
   ExternalLink,
   Zap,
   Activity,
@@ -29,12 +26,10 @@ import {
 import { OPENROUTER_MODELS } from '../data/models';
 import { readSessionCredential } from '../lib/cloudflareWorkspace';
 import { MonitoredRepo, BugFixRun } from '../types';
-import { DaemonService } from '../services/daemonService';
 
 interface HomepageProps {
   onNavigateToDashboard: () => void;
   onOpenAddRepo: () => void;
-  onOpenBugPlayground: () => void;
   onOpenUndoCenter: () => void;
   onOpenEmailReport: () => void;
   onOpenSettings: () => void;
@@ -48,7 +43,6 @@ interface HomepageProps {
 export const Homepage: React.FC<HomepageProps> = ({
   onNavigateToDashboard,
   onOpenAddRepo,
-  onOpenBugPlayground,
   onOpenUndoCenter,
   onOpenEmailReport,
   onOpenSettings,
@@ -62,7 +56,8 @@ export const Homepage: React.FC<HomepageProps> = ({
   const [openRouterKey, setOpenRouterKey] = useState(readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key'));
   const [githubToken, setGithubToken] = useState(readSessionCredential('dbugger_github_token', 'repoheal_github_token'));
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
+  const storedModel = sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || '';
+  const [selectedModel, setSelectedModel] = useState(OPENROUTER_MODELS.some((model) => model.id === storedModel) ? storedModel : (OPENROUTER_MODELS[0]?.id || ''));
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
   );
@@ -70,9 +65,6 @@ export const Homepage: React.FC<HomepageProps> = ({
   const [keySaved, setKeySaved] = useState(false);
   const [ghSaved, setGhSaved] = useState(false);
   const [slackSaved, setSlackSaved] = useState(false);
-  const [isTestingSlack, setIsTestingSlack] = useState(false);
-  const [slackTestSuccess, setSlackTestSuccess] = useState(false);
-  const [isClearingRepos, setIsClearingRepos] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -105,33 +97,6 @@ export const Homepage: React.FC<HomepageProps> = ({
     setTimeout(() => setSlackSaved(false), 2500);
   };
 
-  const handleTestSlack = async () => {
-    if (!slackWebhook) return;
-    setIsTestingSlack(true);
-    try {
-      await fetch('/api/slack/send-alert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          webhookUrl: slackWebhook,
-          repoName: 'acme/ecommerce-api',
-          bugTitle: 'Test Slack Webhook Alert from D-Bugger',
-          bugCategory: 'integration_test',
-          severity: 'medium',
-          prUrl: 'https://github.com/acme/ecommerce-api/pull/101',
-          score: 98,
-          actionType: 'fix_applied'
-        })
-      });
-      setSlackTestSuccess(true);
-      setTimeout(() => setSlackTestSuccess(false), 3000);
-    } catch (e) {
-      console.warn('Slack test error:', e);
-    } finally {
-      setIsTestingSlack(false);
-    }
-  };
-
   const handleRequestNotification = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       const permission = await Notification.requestPermission();
@@ -144,21 +109,6 @@ export const Homepage: React.FC<HomepageProps> = ({
     }
   };
 
-  const handleClearRepos = async () => {
-    if (window.confirm('Clear sandbox demo repositories? You can add your own real GitHub repositories or reload demo repos at any time.')) {
-      setIsClearingRepos(true);
-      await DaemonService.clearDemoRepos();
-      setIsClearingRepos(false);
-    }
-  };
-
-  const handleResetDemoRepos = async () => {
-    setIsClearingRepos(true);
-    await DaemonService.resetToDemoRepos(userEmail);
-    setIsClearingRepos(false);
-  };
-
-  const demoReposCount = repos.filter(r => r.isMockDemo).length;
   const verifiedDeliveryRuns = fixRuns.filter(r => r.pullRequestUrl && r.pullRequestNumber && r.pushedCommitSha);
   const activeFixesCount = verifiedDeliveryRuns.filter(r => !r.isUndone).length;
   const scoredRuns = fixRuns.filter(r => typeof r.pipeline?.overallScore === 'number' && r.pipeline.overallScore > 0);
@@ -173,7 +123,7 @@ export const Homepage: React.FC<HomepageProps> = ({
           <div className="max-w-3xl space-y-3">
             <div className="flex items-center gap-2">
               <span className="bg-black text-[#F9F7F2] text-[10px] font-sans font-bold uppercase tracking-wider px-2.5 py-0.5 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                Autonomous Git Daemon
+                Live Repository Monitor
               </span>
               <span className="text-xs font-mono font-bold text-[#121212]/80">
                 v2.4.0 • OpenRouter &amp; GitHub MCP Engine
@@ -200,14 +150,6 @@ export const Homepage: React.FC<HomepageProps> = ({
                 <Activity className="h-4 w-4" />
                 Launch Live Dashboard
                 <ArrowRight className="h-4 w-4 ml-1" />
-              </button>
-
-              <button
-                onClick={onOpenBugPlayground}
-                className="flex items-center gap-2 border-2 border-black bg-white text-[#121212] px-4 py-2.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-[#F9F7F2] active:translate-x-[1px] active:translate-y-[1px] transition-all"
-              >
-                <Flame className="h-4 w-4 text-red-600" />
-                Simulate Bug Ingestion
               </button>
 
               <button
@@ -279,11 +221,11 @@ export const Homepage: React.FC<HomepageProps> = ({
                   API Credentials &amp; AI Model Setup
                 </h3>
                 <span className="text-[10px] font-mono font-bold bg-black text-[#F9F7F2] px-2 py-0.5 uppercase">
-                  {openRouterKey ? 'AI Key Active' : 'Diagnostics Only'}
+                  {openRouterKey ? 'AI Key Active' : 'Key Required'}
                 </span>
               </div>
               <p className="text-xs font-sans text-[#121212]/80 mt-1 leading-relaxed max-w-2xl">
-                Add your personal <strong>OpenRouter API Key</strong> for real model analysis and patch proposals. Without it, D-Bugger runs diagnostics only. Connect your <strong>GitHub Token</strong> so real repository source and commits can be read, then configure <strong>Slack Webhook</strong> and <strong>Push Alerts</strong> if needed.
+                Add your personal <strong>OpenRouter API Key</strong> for real model analysis and patch proposals. Without it, no analysis run is started. Connect your <strong>GitHub Token</strong> so repository source and commits can be read, then configure <strong>Slack Webhook</strong> and <strong>Push Alerts</strong> if needed.
               </p>
             </div>
           </div>
@@ -300,55 +242,33 @@ export const Homepage: React.FC<HomepageProps> = ({
         </div>
       </section>
 
-      {/* WHY PRELOADED REPOSITORIES CALLOUT BANNER */}
+      {/* REAL REPOSITORY CONNECTION CALLOUT */}
       <section className="border-2 border-black bg-white p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center border-2 border-black bg-amber-200 text-amber-950 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] shrink-0 mt-0.5">
-              <Info className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center border-2 border-black bg-emerald-200 text-emerald-950 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] shrink-0 mt-0.5">
+              <Github className="h-5 w-5" />
             </div>
             <div>
               <h3 className="font-serif-heading text-base font-bold uppercase tracking-tight text-[#121212]">
-                Why are there preloaded repositories in this workspace?
+                Connect a real GitHub repository
               </h3>
               <p className="text-xs font-sans text-[#121212]/80 mt-1 leading-relaxed max-w-3xl">
-                For safe UI inspection, D-Bugger includes preset sandbox records (e.g., <code>ecommerce-api</code>, <code>auth-gateway</code>, <code>saas-dashboard-v2</code>). They are local review data only: they do not call OpenRouter, read GitHub, run tests, create branches, open PRs, or provide rollback evidence.
+                D-Bugger starts with the repository’s current commit and changed source files. It then gathers Gridscape context and sends the bounded evidence to your selected OpenRouter model. No repository is preloaded and no code is generated without a real repository snapshot.
               </p>
               <p className="text-xs font-sans text-[#121212]/70 mt-1">
-                You can easily clear the sandbox and connect your personal or organization GitHub repositories, or reload demo repositories at any time.
+                Provide a session-only GitHub token with the required read/write permissions and your own OpenRouter key before running a live sweep.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0 self-start">
-            <button
-              onClick={onOpenAddRepo}
-              className="flex items-center justify-center gap-1.5 border border-black bg-black text-[#F9F7F2] px-3.5 py-2 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] transition-all"
-            >
-              <Github className="h-3.5 w-3.5" />
-              Connect Real GitHub Repo
-            </button>
-
-            {repos.length > 0 ? (
-              <button
-                onClick={handleClearRepos}
-                disabled={isClearingRepos}
-                className="flex items-center justify-center gap-1.5 border border-black bg-white text-red-900 px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-red-50 transition-all disabled:opacity-50"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Clear Sandbox Repos
-              </button>
-            ) : (
-              <button
-                onClick={handleResetDemoRepos}
-                disabled={isClearingRepos}
-                className="flex items-center justify-center gap-1.5 border border-black bg-white text-black px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-[#F9F7F2] transition-all disabled:opacity-50"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Reload Demo Repos
-              </button>
-            )}
-          </div>
+          <button
+            onClick={onOpenAddRepo}
+            className="flex items-center justify-center gap-1.5 border border-black bg-black text-[#F9F7F2] px-3.5 py-2 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] transition-all shrink-0 self-start"
+          >
+            <Github className="h-3.5 w-3.5" />
+            Connect GitHub Repo
+          </button>
         </div>
       </section>
 
@@ -386,12 +306,12 @@ export const Homepage: React.FC<HomepageProps> = ({
                   </h3>
                 </div>
                 <span className="text-[10px] font-mono font-bold uppercase bg-emerald-200 text-emerald-950 px-2 py-0.5 border border-black">
-                  {openRouterKey ? 'AI Key Active' : 'Diagnostics Only'}
+                  {openRouterKey ? 'AI Key Active' : 'Key Required'}
                 </span>
               </div>
 
               <p className="text-xs font-sans text-[#121212]/80 mb-3">
-                Select the model to use after you provide your own OpenRouter key. D-Bugger will display the model response summary and evidence in AI Thoughts; without a key, only local deterministic diagnostics run.
+                Select the model to use after you provide your own OpenRouter key. D-Bugger displays the returned model summary and evidence in AI Thoughts; without a key, no AI run is started.
               </p>
 
               <form onSubmit={handleSaveOpenRouter} className="space-y-2.5">
@@ -532,22 +452,7 @@ export const Homepage: React.FC<HomepageProps> = ({
                   />
                 </div>
 
-                <div className="pt-1 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={handleTestSlack}
-                    disabled={!slackWebhook || isTestingSlack}
-                    className="border border-black bg-white px-2.5 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] hover:bg-[#F9F7F2] disabled:opacity-40"
-                  >
-                    {isTestingSlack ? 'Testing...' : 'Send Test Alert'}
-                  </button>
-
-                  {slackTestSuccess && (
-                    <span className="text-[11px] font-bold text-emerald-800">
-                      Alert sent to Slack!
-                    </span>
-                  )}
-
+                <div className="pt-1 flex items-center justify-end gap-2">
                   <button
                     type="submit"
                     className="border border-black bg-black text-[#F9F7F2] px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] transition-all"
@@ -656,7 +561,7 @@ export const Homepage: React.FC<HomepageProps> = ({
               Defensive Patching
             </h4>
             <p className="text-xs text-[#121212]/75 mt-1 leading-relaxed">
-              The returned model proposal, or a clearly labeled deterministic diagnostic fallback, is shown as code and diff evidence for human review.
+              The returned model proposal is shown as code and diff evidence for human review. If the model is unavailable, no patch is shown.
             </p>
           </div>
 

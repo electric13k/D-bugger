@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { WorkspaceUser, completeGoogleSignIn, onWorkspaceAuthStateChanged } from './lib/workspaceAuth';
 import { MonitoredRepo, BugFixRun, DaemonLog, InAppNotification } from './types';
 import { DaemonService } from './services/daemonService';
-import { DEMO_PRESET_REPOS } from './data/models';
 import { Navbar } from './components/Navbar';
 import { Homepage } from './components/Homepage';
 import { StatsBar } from './components/StatsBar';
@@ -15,7 +14,6 @@ import { AIThoughtStreamModal } from './components/AIThoughtStreamModal';
 import { EmailReportModal } from './components/EmailReportModal';
 import { UndoCenterModal } from './components/UndoCenterModal';
 import { SettingsModal } from './components/SettingsModal';
-import { BugPlaygroundModal } from './components/BugPlaygroundModal';
 import { AddRepoModal } from './components/AddRepoModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
 import { EmailAuthModal } from './components/EmailAuthModal';
@@ -33,10 +31,8 @@ import {
   RotateCcw, 
   Zap, 
   CheckCircle2, 
-  Bug,
   Cpu,
   Layers,
-  Flame,
   LayoutDashboard,
   Home,
   Key
@@ -44,7 +40,7 @@ import {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<WorkspaceUser | null>(null);
-  const [repos, setRepos] = useState<MonitoredRepo[]>(DEMO_PRESET_REPOS);
+  const [repos, setRepos] = useState<MonitoredRepo[]>([]);
   const [fixRuns, setFixRuns] = useState<BugFixRun[]>([]);
   const [daemonRunning, setDaemonRunning] = useState(true);
   const [isCycling, setIsCycling] = useState(false);
@@ -109,7 +105,6 @@ export default function App() {
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [undoCenterOpen, setUndoCenterOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [bugPlaygroundOpen, setBugPlaygroundOpen] = useState(false);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
   const [emailAuthOpen, setEmailAuthOpen] = useState(false);
   const [gridscapeResearchOpen, setGridscapeResearchOpen] = useState(false);
@@ -118,7 +113,6 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onWorkspaceAuthStateChanged((user) => {
       setCurrentUser(user);
-      void DaemonService.initializeDefaults(user?.email || undefined);
     });
     void completeGoogleSignIn().catch((error: any) => {
       console.warn('Google sign-in could not be completed:', error?.message || error);
@@ -131,8 +125,7 @@ export default function App() {
     void getWorkspaceId();
     loadCloudflareWorkspace().then((state) => {
       if (!state) return;
-      const hydratedRepos = Array.isArray(state.repos) && state.repos.length > 0 ? state.repos : DEMO_PRESET_REPOS;
-      setRepos(hydratedRepos);
+      setRepos(Array.isArray(state.repos) ? state.repos : []);
       setFixRuns(state.fixRuns || []);
       if (state.logs?.length) setLogs(prev => [...state.logs, ...prev].slice(0, 100));
       if (typeof state.daemonRunning === 'boolean') setDaemonRunning(state.daemonRunning);
@@ -156,8 +149,8 @@ export default function App() {
             });
           }
         }
-      } catch (e) {
-        // graceful offline fallback pulse
+      } catch {
+        addLog('warn', 'Daemon status endpoint unavailable; no repository work was performed.');
       }
 
       const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
@@ -247,9 +240,9 @@ export default function App() {
     setDashboardTab('overview');
     addLog('info', 'Scanning configured live repositories for incoming commits and changed source files...');
     try {
-      const scanTargets = repos.filter(repo => !repo.isMockDemo);
+      const scanTargets = repos;
       if (scanTargets.length === 0) {
-        addLog('warn', 'No live repository is connected. Add a GitHub repository and token before running a real sweep. Sandbox presets were not executed.');
+        addLog('warn', 'No GitHub repository is connected. Add a repository and token before running a real sweep.');
         return;
       }
       for (const repo of scanTargets) await handleScanRepo(repo);
@@ -267,30 +260,34 @@ export default function App() {
     try {
       const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
       let repositorySnapshot;
-      if (!githubToken && !repo.isMockDemo) {
+      if (!githubToken) {
         addLog('warn', `Cannot analyze ${repo.name}: a session-only GitHub token is required to read its current source.`, repo.name);
         addNotification({ title: 'GitHub Token Required', message: `No live source was read for ${repo.name}. Add a GitHub token in API Credentials, then run the sweep again.`, type: 'error', repoName: repo.name });
         return;
       }
-      if (githubToken && !repo.isMockDemo) {
-        addLog('mcp', `Reading the latest commit and changed source files from ${repo.name}...`, repo.name);
-        try {
-          repositorySnapshot = await fetchRepositoryDebugSnapshot(repo, githubToken);
-          addLog('mcp', `Loaded ${repositorySnapshot.files.length} changed source file(s) from commit ${repositorySnapshot.commitSha.slice(0, 8)} for real debugging.`, repo.name);
-        } catch (error: any) {
-          addLog('warn', `Live repository snapshot unavailable; using indexed context fallback: ${error.message || 'GitHub read failed.'}`, repo.name);
-        }
+      const openRouterKey = readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key');
+      if (!openRouterKey) {
+        addLog('warn', `Cannot analyze ${repo.name}: a session-only OpenRouter key is required for model analysis.`, repo.name);
+        addNotification({ title: 'OpenRouter Key Required', message: `No AI analysis was run for ${repo.name}. Add your OpenRouter key in API Credentials, then run the sweep again.`, type: 'error', repoName: repo.name });
+        return;
       }
-      const sourceCode = repositorySnapshot?.files.map((file) => `// ${file.path}\n${file.content || file.patch}`).join('\n\n').slice(0, 26000);
+      addLog('mcp', `Reading the latest commit and changed source files from ${repo.name}...`, repo.name);
+      try {
+        repositorySnapshot = await fetchRepositoryDebugSnapshot(repo, githubToken);
+        addLog('mcp', `Loaded ${repositorySnapshot.files.length} changed source file(s) from commit ${repositorySnapshot.commitSha.slice(0, 8)} for real debugging.`, repo.name);
+      } catch (error: any) {
+        throw new Error(`Live repository snapshot unavailable: ${error.message || 'GitHub read failed.'}`);
+      }
+      if (!repositorySnapshot?.files?.length) throw new Error('No changed source files were returned by GitHub. No AI analysis was run.');
+      const sourceCode = repositorySnapshot.files.map((file) => `// ${file.path}\n${file.content || file.patch}`).join('\n\n').slice(0, 26000);
       addLog('ai', `Gathering automatic Gridscape research before ${repo.name} analysis...`, repo.name);
-      const researchResult = await researchBeforeFix(repo, { commitMessage: repositorySnapshot?.commitMessage || 'automatic repository scan', scenario: 'find broken behavior and safe improvements to functioning code', code: sourceCode || repo.contextAnalysis?.architectureSummary });
+      const researchResult = await researchBeforeFix(repo, { commitMessage: repositorySnapshot.commitMessage, scenario: 'find broken behavior and safe improvements to functioning code', code: sourceCode });
       addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
-      const fixRun = await DaemonService.triggerBugFix(repo, undefined, sourceCode, repositorySnapshot?.commitMessage, researchResult, repositorySnapshot);
+      const fixRun = await DaemonService.triggerBugFix(repo, sourceCode, repositorySnapshot.commitMessage, researchResult, repositorySnapshot);
       setFixRuns(prev => [fixRun, ...prev].slice(0, 50));
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
-      const modelEvidence = fixRun.mcpToolLogs.find((entry) => entry.tool === 'ai_analysis')?.output;
-      addLog(modelEvidence?.responseReceived ? 'ai' : 'warn', modelEvidence?.responseReceived ? `AI model returned an analysis for ${repo.name}; the concise reasoning summary is available in AI Thoughts.` : 'No AI model response was available; this run used deterministic diagnostics only. Add a session-only OpenRouter key for model analysis.', repo.name);
+      addLog('ai', `OpenRouter returned a model analysis for ${repo.name}; the returned summary and code are available in AI Thoughts.`, repo.name);
       const deliveryVerified = Boolean(fixRun.pullRequestUrl && fixRun.pullRequestNumber && fixRun.pushedCommitSha);
       addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready for human review' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (Recorded pipeline score: ${fixRun.pipeline?.overallScore ?? 0}%)`, repo.name);
       addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'Connect a real repository and GitHub token to deliver a PR.'), repo.name);
@@ -319,45 +316,6 @@ export default function App() {
         type: 'error',
         repoName: repo.name
       });
-    } finally {
-      setIsScanningRepoId(null);
-    }
-  };
-
-  // Trigger Bug from Playground
-  const handleTriggerBugFromPlayground = async (
-    repo: MonitoredRepo, 
-    scenarioIndex: number, 
-    customCode?: string, 
-    customCommit?: string
-  ) => {
-    setIsScanningRepoId(repo.id);
-    addLog('warn', `Simulated commit received on ${repo.name}: "${customCommit || 'Commit Bug'}"`, repo.name);
-    
-    try {
-      addLog('ai', `Gathering automatic Gridscape research before ${repo.name} analysis...`, repo.name);
-      const researchResult = await researchBeforeFix(repo, { commitMessage: customCommit || 'simulated commit bug', scenario: `scenario ${scenarioIndex}`, code: customCode });
-      addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
-      addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
-      const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit, researchResult);
-      setFixRuns(prev => [fixRun, ...prev].slice(0, 50));
-      void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
-      const modelEvidence = fixRun.mcpToolLogs.find((entry) => entry.tool === 'ai_analysis')?.output;
-      addLog(modelEvidence?.responseReceived ? 'ai' : 'warn', modelEvidence?.responseReceived ? `AI model returned an analysis for ${repo.name}; the concise reasoning summary is available in AI Thoughts.` : 'No AI model response was available; this simulation used deterministic diagnostics only.', repo.name);
-      const deliveryVerified = Boolean(fixRun.pullRequestUrl && fixRun.pullRequestNumber && fixRun.pushedCommitSha);
-      addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
-      addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on ${repo.name}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'This is a simulation path; connect a real repository for delivery.'), repo.name);
-      
-      addNotification({
-        title: deliveryVerified ? `Verified PR Ready: ${fixRun.bugTitle}` : `Sandbox Diagnosis: ${fixRun.bugTitle}`,
-        message: deliveryVerified ? `Fixed "${fixRun.bugTitle}" on ${repo.name} with ${repo.openRouterModel}.` : `Diagnosed "${fixRun.bugTitle}" on ${repo.name}; no GitHub changes were made.`,
-        type: deliveryVerified ? 'fix_success' : 'info',
-        repoName: repo.name,
-        prUrl: deliveryVerified ? fixRun.pullRequestUrl : undefined
-      });
-
-      // Keep the diff available for explicit inspection, but open the evidence-backed thought stream first.
-      setThoughtStreamRun(fixRun);
     } finally {
       setIsScanningRepoId(null);
     }
@@ -495,7 +453,6 @@ export default function App() {
         daemonRunning={daemonRunning}
         onToggleDaemon={handleToggleDaemon}
         onTriggerCycle={handleTriggerCycle}
-        onOpenBugPlayground={() => setBugPlaygroundOpen(true)}
         onOpenEmailModal={() => setEmailModalOpen(true)}
         onOpenUndoCenter={() => setUndoCenterOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -516,8 +473,7 @@ export default function App() {
           <Homepage
             onNavigateToDashboard={() => setPageView('dashboard')}
             onOpenAddRepo={() => setAddRepoOpen(true)}
-            onOpenBugPlayground={() => setBugPlaygroundOpen(true)}
-            onOpenUndoCenter={() => setUndoCenterOpen(true)}
+                onOpenUndoCenter={() => setUndoCenterOpen(true)}
             onOpenEmailReport={() => setEmailModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
@@ -563,14 +519,6 @@ export default function App() {
                     API Credentials &amp; Models
                   </button>
 
-                  <button
-                    id="hero-btn-inject-bug"
-                    onClick={() => setBugPlaygroundOpen(true)}
-                    className="flex items-center justify-center gap-2 bg-black text-[#F9F7F2] border border-black px-5 py-3 text-xs font-sans font-bold uppercase tracking-[0.15em] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] transition-all"
-                  >
-                    <Flame className="h-4 w-4 text-amber-300" />
-Open Sandbox Playground
-                  </button>
                 </div>
               </div>
             </div>
@@ -759,14 +707,6 @@ Open Sandbox Playground
             type: 'info'
           });
         }}
-      />
-
-      {/* Bug Playground & Injection Modal */}
-      <BugPlaygroundModal
-        isOpen={bugPlaygroundOpen}
-        onClose={() => setBugPlaygroundOpen(false)}
-        repos={repos.length ? repos : DEMO_PRESET_REPOS}
-        onTriggerBug={handleTriggerBugFromPlayground}
       />
 
       {/* Add Repository Modal */}

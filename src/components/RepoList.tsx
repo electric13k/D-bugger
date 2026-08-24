@@ -130,11 +130,6 @@ export const RepoList: React.FC<RepoListProps> = ({
                           <GitBranch className="h-2.5 w-2.5 text-black" />
                           {repo.branch}
                         </span>
-                        {repo.isMockDemo && (
-                          <span className="text-[10px] uppercase font-bold tracking-wider text-[#121212] bg-amber-200 px-1.5 py-0.5 border border-black">
-                            Sandbox
-                          </span>
-                        )}
                       </div>
                     </div>
 

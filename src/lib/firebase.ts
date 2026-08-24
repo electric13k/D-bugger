@@ -22,7 +22,7 @@ export async function loginWithGoogle(): Promise<User | null> {
     return result.user;
   } catch (error: any) {
     console.warn("Google sign in popup error or blocked by iframe:", error);
-    // Allow fallback handling in caller if iframe blocks popups
+    // Let the caller handle popup restrictions if the iframe blocks the sign-in window
     throw error;
   }
 }

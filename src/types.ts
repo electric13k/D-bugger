@@ -84,7 +84,6 @@ export interface MonitoredRepo {
   alertEmail?: string;
   slackAlerts?: boolean;
   slackWebhookUrl?: string;
-  isMockDemo?: boolean;
   requiresHumanApproval?: boolean;
   contextAnalysis?: RepoContextAnalysis;
   contributors?: ContributorInfo[];
@@ -267,7 +266,7 @@ export interface EmailReport {
   summary: string;
   fixesIncluded: string[]; // fix IDs
   failedFixes?: string[];
-  status: 'sent' | 'queued' | 'simulated';
+  status: 'sent' | 'queued';
   htmlContent: string;
 }
 

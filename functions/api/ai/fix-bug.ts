@@ -1,150 +1,88 @@
-interface FixBugEnv {
-  OPENROUTER_API_KEY?: string;
-}
-
 interface FixBugBody {
   repoName?: unknown;
   commitMessage?: unknown;
   originalCode?: unknown;
-  bugScenario?: Record<string, unknown>;
   model?: unknown;
   userApiKey?: unknown;
-  securityThreshold?: unknown;
   researchContext?: unknown;
   researchSources?: unknown;
-  repositorySnapshot?: { commitSha?: unknown; commitMessage?: unknown; files?: Array<{ path?: unknown; patch?: unknown; content?: unknown; language?: unknown }> };
+  repositorySnapshot?: {
+    commitSha?: unknown;
+    commitMessage?: unknown;
+    files?: Array<{ path?: unknown; patch?: unknown; content?: unknown; language?: unknown }>;
+  };
 }
 
 function text(value: unknown, max = 12000) {
-  return typeof value === 'string' ? value.slice(0, max) : '';
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
-function scorePipeline(_threshold: number) {
-  return {
-    astSyntaxCheck: { status: 'warning' as const, message: 'No independent AST/type-check runner was executed.', score: 0 },
-    securityVulnerabilityScan: { status: 'warning' as const, vulnerabilitiesFound: [], score: 0 },
-    legalRiskCheck: {
-      status: 'warning' as const,
-      score: 0,
-      licenseContamination: { status: 'warning' as const, detectedLicenses: [], viralRisk: false, detail: 'No independent license scan was executed.' },
-      secretLeakGuard: { status: 'failed' as const, secretsFound: [], detail: 'No independent secret scan was executed.' },
-      copyrightIntegrity: { status: 'warning' as const, uncreditedCopyDetected: false, detail: 'No independent copyright scan was executed.' },
-      complianceFrameworks: [],
-      legalSignoffSummary: 'Not independently verified; review or CI is required.',
-    },
-    unitTestVerification: { status: 'warning' as const, testsRun: 0, testsPassed: 0, score: 0 },
-    breakingChangeCheck: { status: 'warning' as const, apiContractsPreserved: false, score: 0 },
-    regressionGuard: { status: 'warning' as const, confidence: 0 },
-    passed: false,
-    overallScore: 0,
-  };
-}
-
-function fallback(body: FixBugBody, model: string, threshold: number) {
-  const scenario = body.bugScenario || {};
-  const snapshotFile = body.repositorySnapshot?.files?.[0];
-  const originalCode = text(snapshotFile?.content, 16000) || text(body.originalCode, 16000);
-  const filePath = text(snapshotFile?.path, 240) || text(scenario.file) || 'repository working tree';
-  const findings: string[] = [];
-  let fixedCode = originalCode;
-  if (/\b(input|value|name|query|body)\.trim\(\)/g.test(fixedCode)) {
-    fixedCode = fixedCode.replace(/\b(input|value|name|query|body)\.trim\(\)/g, '(typeof $1 === \'string\' ? $1.trim() : \'\')');
-    findings.push('unguarded trim call can throw when input is absent or not a string');
-  }
-  if (/JSON\.parse\(/.test(fixedCode) && !/try\s*\{[\s\S]{0,600}JSON\.parse\(/.test(fixedCode)) {
-    findings.push('JSON.parse is not visibly guarded; malformed payloads can escape the handler');
-  }
-  if (/addEventListener\(/.test(fixedCode) && !/removeEventListener\(/.test(fixedCode)) {
-    findings.push('event listener registration has no visible matching cleanup');
-  }
-  if (/new\s+WebSocket\(/.test(fixedCode) && !/\.close\(\)/.test(fixedCode)) {
-    findings.push('WebSocket creation has no visible close path');
-  }
-  if (/SELECT[\s\S]{0,300}(\+|\$\{|`)/i.test(fixedCode)) {
-    findings.push('SQL construction may interpolate untrusted data and requires parameterized queries');
-  }
-  const suppliedFix = text(scenario.suggestedFix, 16000);
-  const changed = fixedCode !== originalCode;
-  const category = findings.some((finding) => /SQL/i.test(finding)) ? 'security_cve' : findings.some((finding) => /listener|WebSocket/i.test(finding)) ? 'memory_leak' : text(scenario.category) || 'logic_flaw';
-  const title = changed ? `Automatic repair for ${findings[0] || 'unsafe input handling'}` : findings.length ? `Review required: ${findings[0]}` : 'No high-confidence defect found';
-  const finalCode = suppliedFix || fixedCode;
-  const pipeline = scorePipeline(threshold);
-  if (!changed && !suppliedFix) {
-    pipeline.passed = false;
-    pipeline.overallScore = Math.min(pipeline.overallScore, 79);
-    pipeline.regressionGuard = { status: 'warning', confidence: 72 };
-  }
-  return {
-    bugTitle: title,
-    bugCategory: category,
-    bugSeverity: findings.some((finding) => /SQL/i.test(finding)) ? 'critical' : findings.length ? 'high' : 'low',
-    affectedFiles: [filePath],
-    aiReasoning: `${findings.length ? findings.join('; ') : 'No high-confidence defect was detected by the deterministic checks.'} Automatic Gridscape research was supplied before analysis. ${changed ? 'A conservative input guard was applied.' : 'The result is flagged for model or human review rather than inventing a patch.'}`,
-    fixedCodeSnippet: finalCode,
-    patchDiff: changed ? `@@ changed ${filePath}\n- ${originalCode.split('\n').find((line) => /trim\(\)/.test(line)) || originalCode.split('\n')[0] || '// vulnerable line'}\n+ ${fixedCode.split('\n').find((line) => /typeof .*trim/.test(line)) || fixedCode.split('\n')[0] || '// guarded line'}` : `No automatic patch generated for ${filePath}; review findings before changing code.`,
-    pipeline,
-    pullRequestTitle: changed ? `fix(auto): ${title}` : `review(auto): inspect ${filePath}`,
-    pullRequestBody: `### Automatic D-Bugger diagnostic\n\nGridscape research was gathered before analysis. ${changed ? 'A conservative, contract-preserving repair was generated.' : 'No safe deterministic patch was generated; model or human review is required before delivery.'}`,
-    modelUsed: model,
-  };
-}
-
-export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction = async ({ request }) => {
   try {
     const body = await request.json() as FixBugBody;
-    const repoName = text(body.repoName, 240) || 'connected repository';
-    const commitMessage = text(body.commitMessage, 1000) || 'automatic scan';
-    const originalCode = text(body.originalCode, 12000);
-    const model = text(body.model, 160) || 'deepseek/deepseek-r1:free';
+    const repoName = text(body.repoName, 240);
+    const commitMessage = text(body.commitMessage, 1000);
+    const model = text(body.model, 160);
     const userApiKey = text(body.userApiKey, 300);
-    const apiKey = userApiKey;
-    const threshold = typeof body.securityThreshold === 'number' ? body.securityThreshold : 85;
+    const originalCode = text(body.originalCode, 16000);
     const researchContext = text(body.researchContext, 14000);
     const researchSources = Array.isArray(body.researchSources) ? body.researchSources.slice(0, 10) : [];
-    const repositoryFiles = Array.isArray(body.repositorySnapshot?.files) ? body.repositorySnapshot.files.slice(0, 8).map((file) => `### ${text(file.path, 240)} (${text(file.language, 40)})\nPatch:\n${text(file.patch, 7000)}\nSource:\n${text(file.content, 14000)}`).join('\n\n') : '';
+    const snapshotFiles = Array.isArray(body.repositorySnapshot?.files) ? body.repositorySnapshot.files.slice(0, 8) : [];
+    const repositoryFiles = snapshotFiles
+      .map((file) => `### ${text(file.path, 240)} (${text(file.language, 40)})\nPatch:\n${text(file.patch, 7000)}\nSource:\n${text(file.content, 14000)}`)
+      .join('\n\n');
 
-    if (apiKey) {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://dbugger.pages.dev',
-          'X-Title': 'D-Bugger Automatic Code Repair',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are D-Bugger, an autonomous senior software engineer. Repair broken code first. Then make only safe, testable improvements to functioning code. Preserve public APIs and existing architecture. Use the supplied repository research as context, never as a reason to invent files or behavior. Return only valid JSON with bugTitle, bugCategory, bugSeverity, affectedFiles, aiReasoning, fixedCodeSnippet, patchDiff, pipeline, pullRequestTitle, and pullRequestBody. The pipeline must include astSyntaxCheck, securityVulnerabilityScan, unitTestVerification, breakingChangeCheck, and regressionGuard with numeric scores.',
-            },
-            {
-              role: 'user',
-              content: `Repository: ${repoName}\nCommit: ${commitMessage}\nChanged repository files and patches:\n${repositoryFiles || originalCode}\nScenario: ${JSON.stringify(body.bugScenario || {})}\nGridscape research context:\n${researchContext || 'No external research was available; use the linked repository context and inspect the code carefully.'}\nResearch sources: ${JSON.stringify(researchSources)}\n\nFirst diagnose concrete failures in the changed code. If it is already functioning, identify only high-confidence, low-risk improvements. Return the corrected code and a precise diff for the affected file(s).`,
-            },
-          ],
-          response_format: { type: 'json_object' },
-        }),
-      });
-      const payload = await response.json().catch(() => ({})) as any;
-      const content = payload.choices?.[0]?.message?.content;
-      if (response.ok && typeof content === 'string') {
-        try {
-          const parsed = JSON.parse(content.replace(/^```json\s*/i, '').replace(/\s*```$/i, ''));
-          const pipeline = parsed.pipeline || scorePipeline(threshold);
-          const scores = [pipeline.astSyntaxCheck?.score, pipeline.securityVulnerabilityScan?.score, pipeline.unitTestVerification?.score, pipeline.breakingChangeCheck?.score].filter((value): value is number => typeof value === 'number');
-          const overallScore = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
-          return Response.json({ success: true, data: { ...parsed, modelUsed: model, pipeline: { ...pipeline, passed: false, overallScore } } });
-        } catch {
-          // Fall through to the deterministic repair result when model JSON is malformed.
-        }
-      }
+    if (!userApiKey) return Response.json({ success: false, error: 'An OpenRouter API key is required for real AI analysis.' }, { status: 401 });
+    if (!model) return Response.json({ success: false, error: 'Select an OpenRouter model before running analysis.' }, { status: 400 });
+    if (!repoName || !commitMessage) return Response.json({ success: false, error: 'A repository name and real commit message are required.' }, { status: 400 });
+    if (!snapshotFiles.length || !repositoryFiles.trim()) return Response.json({ success: false, error: 'A real GitHub source snapshot is required. No AI analysis was run.' }, { status: 400 });
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${userApiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://dbugger.pages.dev',
+        'X-Title': 'D-Bugger Repository Analysis',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are D-Bugger, a senior software engineer reviewing a real GitHub commit. Diagnose concrete defects in the supplied changed source first. If the code is functioning, identify only high-confidence, low-risk improvements. Preserve public APIs and existing architecture. Use the supplied Gridscape research as context, never as a reason to invent files or behavior. Return only valid JSON with bugTitle, bugCategory, bugSeverity, affectedFiles, aiReasoning, fixedCodeSnippet, patchDiff, pipeline, pullRequestTitle, and pullRequestBody. Do not claim tests, CI, security scans, legal review, commits, or pull requests unless the supplied evidence explicitly contains those results. The pipeline must describe model analysis only; external validation remains unverified.',
+          },
+          {
+            role: 'user',
+            content: `Repository: ${repoName}\nCommit: ${commitMessage}\nChanged repository files and patches:\n${repositoryFiles}\nGridscape research context:\n${researchContext || 'No external research was available; inspect the supplied changed source carefully.'}\nResearch sources: ${JSON.stringify(researchSources)}\n\nReturn a concise diagnosis, the smallest safe corrected code for the affected file when justified, and a precise unified diff. Do not invent a successful result when evidence is missing.`,
+          },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({})) as any;
+    if (!response.ok) {
+      return Response.json({ success: false, error: payload.error?.message || `OpenRouter analysis failed (${response.status}).` }, { status: 502 });
+    }
+    const content = payload.choices?.[0]?.message?.content;
+    if (typeof content !== 'string' || !content.trim()) {
+      return Response.json({ success: false, error: 'OpenRouter returned no model content.' }, { status: 502 });
     }
 
-    return Response.json({ success: true, data: fallback({ ...body, originalCode }, model, threshold), mode: 'deterministic-safe-fallback' });
+    let parsed: any;
+    try {
+      parsed = JSON.parse(content.replace(/^```json\s*/i, '').replace(/\s*```$/i, ''));
+    } catch {
+      return Response.json({ success: false, error: 'OpenRouter returned malformed JSON; no patch was created.' }, { status: 502 });
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return Response.json({ success: false, error: 'OpenRouter returned no structured analysis.' }, { status: 502 });
+    }
+
+    return Response.json({ success: true, data: { ...parsed, modelUsed: model }, mode: 'openrouter-user-key-v2' });
   } catch (error) {
-    console.error('Automatic D-Bugger fix error:', error);
-    return Response.json({ success: false, error: 'Automatic repair could not be completed.' }, { status: 500 });
+    console.error('D-Bugger OpenRouter analysis error:', error);
+    return Response.json({ success: false, error: 'AI analysis could not be completed.' }, { status: 500 });
   }
 };

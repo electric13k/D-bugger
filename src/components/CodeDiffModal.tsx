@@ -161,11 +161,11 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
               {/* Fixed Code */}
               <div className="border-2 border-emerald-800 bg-emerald-50 p-4 text-[#121212]">
                 <div className="mb-2 flex items-center justify-between text-xs font-bold font-sans uppercase text-emerald-950 border-b border-emerald-300 pb-1">
-                  <span>✅ {deliveryVerified ? `Code in Verified PR (${run.modelUsed.split('/')[1] || 'model'})` : `Diagnostic Proposal (${run.modelUsed.split('/')[1] || 'fallback'})`}</span>
+                  <span>{deliveryVerified ? `Verified Model Proposal (${run.modelUsed.split('/')[1] || 'model'})` : `Model Proposal (${run.modelUsed.split('/')[1] || 'model'})`}</span>
                   <span className="text-[10px] font-mono opacity-75">{deliveryVerified ? `branch ${run.branchName}` : 'no GitHub branch or commit created'}</span>
                 </div>
                 <pre className="overflow-x-auto text-emerald-950 font-mono whitespace-pre-wrap leading-relaxed">
-                  {run.fixedCodeSnippet || '// No corrected code proposal was returned.'}
+                  {run.fixedCodeSnippet || '// No model proposal was returned.'}
                 </pre>
               </div>
             </div>
@@ -174,7 +174,7 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
           {viewMode === 'unified' && (
             <div className="border-2 border-black bg-black p-4 text-[#F9F7F2]">
               <pre className="overflow-x-auto font-mono whitespace-pre-wrap leading-relaxed text-[#F9F7F2]">
-                {run.patchDiff || '// No patch diff was returned for this run.'}
+                {run.patchDiff || '// No model patch diff was returned for this run.'}
               </pre>
             </div>
           )}

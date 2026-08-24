@@ -15,7 +15,6 @@ import {
   LogOut,
   Sparkles,
   Radio,
-  Flame,
   Terminal,
   LayoutDashboard,
   Home,
@@ -32,7 +31,6 @@ interface NavbarProps {
   daemonRunning: boolean;
   onToggleDaemon: () => void;
   onTriggerCycle: () => void;
-  onOpenBugPlayground: () => void;
   onOpenEmailModal: () => void;
   onOpenUndoCenter: () => void;
   onOpenSettings: () => void;
@@ -51,7 +49,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   daemonRunning,
   onToggleDaemon,
   onTriggerCycle,
-  onOpenBugPlayground,
   onOpenEmailModal,
   onOpenUndoCenter,
   onOpenSettings,
@@ -172,16 +169,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isCycling ? 'animate-spin text-black' : ''}`} />
             <span className="hidden lg:inline">{isCycling ? 'Sweeping...' : 'Manual Sweep'}</span>
-          </button>
-
-          {/* Test Bug Playground Button */}
-          <button
-            id="btn-test-bug-playground"
-            onClick={onOpenBugPlayground}
-            className="flex items-center gap-1.5 bg-black text-[#F9F7F2] border border-black px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-[#222222] active:translate-x-[1px] active:translate-y-[1px] transition-all"
-          >
-            <Flame className="h-3.5 w-3.5 text-amber-300" />
-            <span className="hidden sm:inline">Inject Bug</span>
           </button>
 
           {/* Email Digest Modal */}
