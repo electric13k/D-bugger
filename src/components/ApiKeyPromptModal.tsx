@@ -237,7 +237,7 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                   ))}
                 </select>
                 <p className="text-[11px] text-[#121212]/70 font-mono">
-                  DeepSeek-R1 and Gemini 2.0 Flash support massive 128k–1M context windows to ingest entire multi-file repository ASTs and call graphs.
+                  Model context limits and availability are determined by the selected OpenRouter model and your account; D-Bugger sends only the bounded repository snapshot.
                 </p>
               </div>
 
