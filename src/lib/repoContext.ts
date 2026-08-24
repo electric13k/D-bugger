@@ -1,11 +1,18 @@
 import type { MonitoredRepo, RepoContextAnalysis } from '../types';
 
-const githubHeaders = (token: string) => ({ Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' });
+const githubHeaders = (token: string) => ({ Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'D-Bugger-Repository-Analysis', 'Content-Type': 'application/json' });
+
+class GitHubRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'GitHubRequestError';
+  }
+}
 
 async function githubJson(url: string, token: string, init?: RequestInit) {
   const response = await fetch(url, { ...init, cache: 'no-store', headers: { ...githubHeaders(token), ...(init?.headers || {}) } });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `GitHub request failed (${response.status})`);
+  if (!response.ok) throw new GitHubRequestError(data.message || `GitHub request failed (${response.status})`, response.status);
   return data;
 }
 
@@ -30,7 +37,8 @@ async function resolveBranchCommit(repo: MonitoredRepo, token: string) {
   try {
     return { branch: requestedBranch, commit: await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(requestedBranch)}`, token) };
   } catch (requestedError: any) {
-    const metadata = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}`, token);
+    if (requestedError instanceof GitHubRequestError && ![404, 422].includes(requestedError.status)) throw requestedError;
+    const metadata = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo}`, token);
     const defaultBranch = typeof metadata.default_branch === 'string' ? metadata.default_branch.trim() : '';
     if (!defaultBranch || defaultBranch === requestedBranch) throw requestedError;
     return { branch: defaultBranch, commit: await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(defaultBranch)}`, token) };

@@ -12,6 +12,13 @@ function text(value: unknown, max: number) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+function privateJson(data: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('Vary', 'Cookie');
+  return Response.json(data, { ...init, headers });
+}
+
 function githubHeaders(token: string) {
   return {
     Accept: 'application/vnd.github+json',
@@ -37,15 +44,15 @@ export const onRequestPost: PagesFunction<UndoFixEnv> = async ({ request }) => {
     const branch = text(body.branch, 200);
     const token = text(body.token, 300);
     const pullRequestNumber = typeof body.pullRequestNumber === 'number' ? body.pullRequestNumber : 0;
-    if (!token) return Response.json({ error: 'A GitHub token is required for a real undo.' }, { status: 401 });
-    if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo) || !/^dbugger\/fix-[A-Za-z0-9]+$/.test(branch)) return Response.json({ error: 'A verified D-Bugger branch is required for undo.' }, { status: 400 });
+    if (!token) return privateJson({ error: 'A GitHub token is required for a real undo.' }, { status: 401 });
+    if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo) || !/^dbugger\/fix-[A-Za-z0-9]+$/.test(branch)) return privateJson({ error: 'A verified D-Bugger branch is required for undo.' }, { status: 400 });
     if (pullRequestNumber > 0) {
       await githubRequest(`https://api.github.com/repos/${owner}/${repo}/pulls/${pullRequestNumber}`, token, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) });
     }
     await githubRequest(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, token, { method: 'DELETE' });
-    return Response.json({ undone: true, branch, pullRequestNumber: pullRequestNumber || undefined });
+    return privateJson({ undone: true, branch, pullRequestNumber: pullRequestNumber || undefined });
   } catch (error: any) {
     console.error('Real GitHub undo failed:', error);
-    return Response.json({ undone: false, error: error?.message || 'GitHub undo failed.' }, { status: 502 });
+    return privateJson({ undone: false, error: error?.message || 'GitHub undo failed.' }, { status: 502 });
   }
 };

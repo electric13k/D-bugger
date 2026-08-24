@@ -31,6 +31,13 @@ async function readGitHubFile(path: string, token?: string) {
   return { path, url: data.html_url || `https://github.com/${repository}/blob/main/${path}`, text: decodeBase64(data.content).slice(0, 12000) };
 }
 
+function privateJson(data: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('Vary', 'Cookie');
+  return Response.json(data, { ...init, headers });
+}
+
 function repositoryGroundedResearch(topic: string, sources: Array<{ path: string; url: string; text: string }>) {
   const context = sources.find((source) => source.path === 'context.md');
   const contract = sources.find((source) => source.path === 'functions/api/generate.ts');
@@ -47,23 +54,23 @@ export const onRequestPost: PagesFunction<GridscapeResearchEnv> = async ({ reque
     const body = await request.json() as { topic?: unknown; githubToken?: unknown };
     const topic = typeof body.topic === 'string' ? body.topic.trim().slice(0, 1200) : '';
     const githubToken = typeof body.githubToken === 'string' && body.githubToken.length <= 300 ? body.githubToken.trim() : undefined;
-    if (!topic) return Response.json({ error: 'Research topic is required.' }, { status: 400 });
+    if (!topic) return privateJson({ error: 'Research topic is required.' }, { status: 400 });
 
     const paths = ['context.md', 'metadata.json', 'functions/api/generate.ts', 'src/App.tsx', 'src/utils/storage.ts'];
     const sources = (await Promise.all(paths.map((path) => readGitHubFile(path, githubToken)))).filter((source): source is { path: string; url: string; text: string } => Boolean(source));
-    if (!sources.length) return Response.json({ error: githubToken ? 'Gridscape repository context could not be read with the supplied GitHub token.' : 'Add your GitHub token in API Credentials so the agent can read the Gridscape repository.' }, { status: githubToken ? 502 : 401 });
+    if (!sources.length) return privateJson({ error: githubToken ? 'Gridscape repository context could not be read with the supplied GitHub token.' : 'Add your GitHub token in API Credentials so the agent can read the Gridscape repository.' }, { status: githubToken ? 502 : 401 });
 
     if (env.GRIDSCAPE_RESEARCH_URL) {
       const endpoint = `${env.GRIDSCAPE_RESEARCH_URL.replace(/\/$/, '')}/api/generate`;
       const prompt = `Research this topic using the Infinity Canvas/Gridscape repository context below. Return concise findings and three follow-up prompts. Topic: ${topic}\n\nRepository sources:\n${sources.map((source) => `### ${source.path}\n${source.text}`).join('\n\n')}`;
       const delegated = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
       const payload = await delegated.json().catch(() => ({}));
-      if (delegated.ok && typeof payload.text === 'string') return Response.json({ mode: 'infinity-canvas', text: payload.text, prompts: Array.isArray(payload.prompts) ? payload.prompts.slice(0, 3) : [], sources: sources.map(({ path, url }) => ({ path, url })) });
+      if (delegated.ok && typeof payload.text === 'string') return privateJson({ mode: 'infinity-canvas', text: payload.text, prompts: Array.isArray(payload.prompts) ? payload.prompts.slice(0, 3) : [], sources: sources.map(({ path, url }) => ({ path, url })) });
     }
 
-    return Response.json(repositoryGroundedResearch(topic, sources), { headers: { 'X-Gridscape-Research-Mode': 'repository-grounded' } });
+    return privateJson(repositoryGroundedResearch(topic, sources), { headers: { 'X-Gridscape-Research-Mode': 'repository-grounded' } });
   } catch (error) {
     console.error('Gridscape research error:', error);
-    return Response.json({ error: 'Unable to research through Gridscape right now.' }, { status: 500 });
+    return privateJson({ error: 'Unable to research through Gridscape right now.' }, { status: 500 });
   }
 };

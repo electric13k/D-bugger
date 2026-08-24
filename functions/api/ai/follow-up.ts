@@ -14,15 +14,22 @@ function text(value: unknown, max: number) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+function privateJson(data: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('Vary', 'Cookie');
+  return Response.json(data, { ...init, headers });
+}
+
 export const onRequestPost: PagesFunction = async ({ request }) => {
   try {
     const body = await request.json() as FollowUpBody;
     const apiKey = text(body.userApiKey, 300);
     const model = text(body.model, 160);
     const prompt = text(body.prompt, 4000);
-    if (!apiKey) return Response.json({ error: 'An OpenRouter API key is required for AI follow-ups.' }, { status: 401 });
-    if (!model) return Response.json({ error: 'Select an OpenRouter model before asking a follow-up.' }, { status: 400 });
-    if (!prompt) return Response.json({ error: 'A follow-up question is required.' }, { status: 400 });
+    if (!apiKey) return privateJson({ error: 'An OpenRouter API key is required for AI follow-ups.' }, { status: 401 });
+    if (!model) return privateJson({ error: 'Select an OpenRouter model before asking a follow-up.' }, { status: 400 });
+    if (!prompt) return privateJson({ error: 'A follow-up question is required.' }, { status: 400 });
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -43,11 +50,11 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
     const payload = await response.json().catch(() => ({})) as any;
     const answer = payload.choices?.[0]?.message?.content;
     if (!response.ok || typeof answer !== 'string' || !answer.trim()) {
-      return Response.json({ error: payload.error?.message || `OpenRouter follow-up failed (${response.status}).` }, { status: 502 });
+      return privateJson({ error: payload.error?.message || `OpenRouter follow-up failed (${response.status}).` }, { status: 502 });
     }
-    return Response.json({ answer: answer.trim().slice(0, 12000), modelUsed: model });
+    return privateJson({ answer: answer.trim().slice(0, 12000), modelUsed: model });
   } catch (error: any) {
     console.error('D-Bugger follow-up failed:', error);
-    return Response.json({ error: 'AI follow-up could not be completed.' }, { status: 500 });
+    return privateJson({ error: 'AI follow-up could not be completed.' }, { status: 500 });
   }
 };

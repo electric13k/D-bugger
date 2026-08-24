@@ -17,6 +17,13 @@ function text(value: unknown, max = 12000) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+function privateJson(data: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('Vary', 'Cookie');
+  return Response.json(data, { ...init, headers });
+}
+
 export const onRequestPost: PagesFunction = async ({ request }) => {
   try {
     const body = await request.json() as FixBugBody;
@@ -32,10 +39,10 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
       .map((file) => `### ${text(file.path, 240)} (${text(file.language, 40)})\nPatch:\n${text(file.patch, 7000)}\nSource:\n${text(file.content, 14000)}`)
       .join('\n\n');
 
-    if (!userApiKey) return Response.json({ success: false, error: 'An OpenRouter API key is required for real AI analysis.' }, { status: 401 });
-    if (!model) return Response.json({ success: false, error: 'Select an OpenRouter model before running analysis.' }, { status: 400 });
-    if (!repoName || !commitMessage) return Response.json({ success: false, error: 'A repository name and real commit message are required.' }, { status: 400 });
-    if (!snapshotFiles.length || !repositoryFiles.trim()) return Response.json({ success: false, error: 'A real GitHub source snapshot is required. No AI analysis was run.' }, { status: 400 });
+    if (!userApiKey) return privateJson({ success: false, error: 'An OpenRouter API key is required for real AI analysis.' }, { status: 401 });
+    if (!model) return privateJson({ success: false, error: 'Select an OpenRouter model before running analysis.' }, { status: 400 });
+    if (!repoName || !commitMessage) return privateJson({ success: false, error: 'A repository name and real commit message are required.' }, { status: 400 });
+    if (!snapshotFiles.length || !repositoryFiles.trim()) return privateJson({ success: false, error: 'A real GitHub source snapshot is required. No AI analysis was run.' }, { status: 400 });
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -63,26 +70,26 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
 
     const payload = await response.json().catch(() => ({})) as any;
     if (!response.ok) {
-      return Response.json({ success: false, error: payload.error?.message || `OpenRouter analysis failed (${response.status}).` }, { status: 502 });
+      return privateJson({ success: false, error: payload.error?.message || `OpenRouter analysis failed (${response.status}).` }, { status: 502 });
     }
     const content = payload.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) {
-      return Response.json({ success: false, error: 'OpenRouter returned no model content.' }, { status: 502 });
+      return privateJson({ success: false, error: 'OpenRouter returned no model content.' }, { status: 502 });
     }
 
     let parsed: any;
     try {
       parsed = JSON.parse(content.replace(/^```json\s*/i, '').replace(/\s*```$/i, ''));
     } catch {
-      return Response.json({ success: false, error: 'OpenRouter returned malformed JSON; no patch was created.' }, { status: 502 });
+      return privateJson({ success: false, error: 'OpenRouter returned malformed JSON; no patch was created.' }, { status: 502 });
     }
     if (!parsed || typeof parsed !== 'object') {
-      return Response.json({ success: false, error: 'OpenRouter returned no structured analysis.' }, { status: 502 });
+      return privateJson({ success: false, error: 'OpenRouter returned no structured analysis.' }, { status: 502 });
     }
 
-    return Response.json({ success: true, data: { ...parsed, modelUsed: model }, mode: 'openrouter-user-key-v2' });
+    return privateJson({ success: true, data: { ...parsed, modelUsed: model }, mode: 'openrouter-user-key-v2' });
   } catch (error) {
     console.error('D-Bugger OpenRouter analysis error:', error);
-    return Response.json({ success: false, error: 'AI analysis could not be completed.' }, { status: 500 });
+    return privateJson({ success: false, error: 'AI analysis could not be completed.' }, { status: 500 });
   }
 };
