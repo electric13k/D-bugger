@@ -19,16 +19,25 @@ function text(value: unknown, max = 12000) {
   return typeof value === 'string' ? value.slice(0, max) : '';
 }
 
-function scorePipeline(threshold: number) {
-  const pipeline = {
-    astSyntaxCheck: { status: 'passed', message: 'AST syntax verified: zero parse errors', score: 98 },
-    securityVulnerabilityScan: { status: 'passed', vulnerabilitiesFound: [], score: 96 },
-    unitTestVerification: { status: 'passed', testsRun: 8, testsPassed: 8, score: 94 },
-    breakingChangeCheck: { status: 'passed', apiContractsPreserved: true, score: 99 },
-    regressionGuard: { status: 'passed', confidence: 97 },
+function scorePipeline(_threshold: number) {
+  return {
+    astSyntaxCheck: { status: 'warning' as const, message: 'No independent AST/type-check runner was executed.', score: 0 },
+    securityVulnerabilityScan: { status: 'warning' as const, vulnerabilitiesFound: [], score: 0 },
+    legalRiskCheck: {
+      status: 'warning' as const,
+      score: 0,
+      licenseContamination: { status: 'warning' as const, detectedLicenses: [], viralRisk: false, detail: 'No independent license scan was executed.' },
+      secretLeakGuard: { status: 'failed' as const, secretsFound: [], detail: 'No independent secret scan was executed.' },
+      copyrightIntegrity: { status: 'warning' as const, uncreditedCopyDetected: false, detail: 'No independent copyright scan was executed.' },
+      complianceFrameworks: [],
+      legalSignoffSummary: 'Not independently verified; review or CI is required.',
+    },
+    unitTestVerification: { status: 'warning' as const, testsRun: 0, testsPassed: 0, score: 0 },
+    breakingChangeCheck: { status: 'warning' as const, apiContractsPreserved: false, score: 0 },
+    regressionGuard: { status: 'warning' as const, confidence: 0 },
+    passed: false,
+    overallScore: 0,
   };
-  const overallScore = Math.round((pipeline.astSyntaxCheck.score + pipeline.securityVulnerabilityScan.score + pipeline.unitTestVerification.score + pipeline.breakingChangeCheck.score) / 4);
-  return { ...pipeline, passed: overallScore >= threshold, overallScore };
 }
 
 function fallback(body: FixBugBody, model: string, threshold: number) {
@@ -88,7 +97,7 @@ export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) 
     const originalCode = text(body.originalCode, 12000);
     const model = text(body.model, 160) || 'deepseek/deepseek-r1:free';
     const userApiKey = text(body.userApiKey, 300);
-    const apiKey = userApiKey || env.OPENROUTER_API_KEY || '';
+    const apiKey = userApiKey;
     const threshold = typeof body.securityThreshold === 'number' ? body.securityThreshold : 85;
     const researchContext = text(body.researchContext, 14000);
     const researchSources = Array.isArray(body.researchSources) ? body.researchSources.slice(0, 10) : [];
@@ -125,8 +134,8 @@ export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) 
           const parsed = JSON.parse(content.replace(/^```json\s*/i, '').replace(/\s*```$/i, ''));
           const pipeline = parsed.pipeline || scorePipeline(threshold);
           const scores = [pipeline.astSyntaxCheck?.score, pipeline.securityVulnerabilityScan?.score, pipeline.unitTestVerification?.score, pipeline.breakingChangeCheck?.score].filter((value): value is number => typeof value === 'number');
-          const overallScore = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : scorePipeline(threshold).overallScore;
-          return Response.json({ success: true, data: { ...parsed, modelUsed: model, pipeline: { ...pipeline, passed: overallScore >= threshold, overallScore } } });
+          const overallScore = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
+          return Response.json({ success: true, data: { ...parsed, modelUsed: model, pipeline: { ...pipeline, passed: false, overallScore } } });
         } catch {
           // Fall through to the deterministic repair result when model JSON is malformed.
         }

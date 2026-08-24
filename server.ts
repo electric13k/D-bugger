@@ -123,6 +123,7 @@ app.post('/api/ai/fix-bug', async (req: Request, res: Response) => {
     } = req.body;
 
     const apiKey = userApiKey || process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(401).json({ success: false, error: 'An OpenRouter or Gemini key is required for the local AI route.' });
 
     let aiResultText = '';
     let tokensUsed = 1240;
@@ -203,41 +204,14 @@ Return a strictly valid JSON response with this exact schema:
       }
     }
 
-    // High quality deterministic fallback generator if keys are unconfigured
     let parsedData: any = null;
     try {
-      if (aiResultText) {
-        parsedData = JSON.parse(aiResultText);
-      }
+      if (aiResultText) parsedData = JSON.parse(aiResultText);
     } catch (e) {
-      console.warn('JSON parsing from AI output failed, using structured response');
+      console.warn('JSON parsing from AI output failed. No repair result will be fabricated.');
     }
-
     if (!parsedData) {
-      const isSecurity = bugScenario?.category === 'security_cve' || originalCode.includes('queryStr') || originalCode.includes('SELECT');
-      const isMemLeak = bugScenario?.category === 'memory_leak' || originalCode.includes('addEventListener') || originalCode.includes('WebSocket');
-      const isRace = bugScenario?.category === 'race_condition' || originalCode.includes('isRefreshing');
-
-      const fixedCode = bugScenario?.suggestedFix || `// Fixed by OpenRouter high-context model (${model})\n${originalCode}\n// Added guard and memory release cleanup`;
-      
-      parsedData = {
-        bugTitle: bugScenario?.title || (isSecurity ? 'Critical Vulnerability Fix: SQL Parameterization' : isMemLeak ? 'Resource Leak: Missing EventListener / Socket Teardown' : 'Uncaught Exception / Logic Flaw in Handler'),
-        bugCategory: bugScenario?.category || (isSecurity ? 'security_cve' : isMemLeak ? 'memory_leak' : isRace ? 'race_condition' : 'null_pointer'),
-        bugSeverity: bugScenario?.severity || (isSecurity ? 'critical' : 'high'),
-        affectedFiles: [bugScenario?.file || 'src/services/handler.ts'],
-        aiReasoning: bugScenario?.bugExplanation || `The high-context model ${model} identified unsafe execution paths under high concurrency and unhandled exception branches. Applied defensive structural guards, type guarantees, and deterministic resource deallocation.`,
-        fixedCodeSnippet: fixedCode,
-        patchDiff: `@@ -1,8 +1,15 @@\n- ${originalCode.split('\n')[0] || '// buggy line'}\n+ // [AUTOMATED FIX BY MCP DAEMON]\n+ ${fixedCode.split('\n')[0] || '// fixed line'}`,
-        pipeline: {
-          astSyntaxCheck: { status: 'passed', message: 'AST syntax verified: zero parse errors', score: 98 },
-          securityVulnerabilityScan: { status: 'passed', vulnerabilitiesFound: [], score: 96 },
-          unitTestVerification: { status: 'passed', testsRun: 8, testsPassed: 8, generatedTestSnippet: `describe('Automated Regression Gate', () => {\n  it('handles edge case without exception', async () => {\n    const res = await runHandlerSafe();\n    expect(res).toBeDefined();\n  });\n});`, score: 94 },
-          breakingChangeCheck: { status: 'passed', apiContractsPreserved: true, score: 99 },
-          regressionGuard: { status: 'passed', confidence: 97 }
-        },
-        pullRequestTitle: `fix(auto): resolve ${bugScenario?.category || 'stability bug'} in ${repoName}`,
-        pullRequestBody: `### Automated Bug Fix by RepoHeal GitHub MCP Daemon\n\n**Model**: \`${model}\`\n**Pipeline Security Score**: 96/100\n\n#### Summary of Changes\n- Patched root vulnerability.\n- Verified with automated AST parser and 8 regression unit tests.\n- Retained complete backward API compatibility.`
-      };
+      return res.status(502).json({ success: false, error: 'The configured AI provider did not return valid structured repair data.' });
     }
 
     // Pipeline overall score calculation
@@ -389,89 +363,10 @@ app.get('/api/mcp/tools', (req: Request, res: Response) => {
   });
 });
 
-// MCP Tool Execution Endpoint
-app.post('/api/mcp/execute', async (req: Request, res: Response) => {
-  const { toolName, parameters, githubToken } = req.body;
-  const token = githubToken || process.env.GITHUB_TOKEN;
-
-  daemonState.logs.unshift({
-    id: `log-${Date.now()}`,
-    timestamp: Date.now(),
-    level: 'mcp',
-    message: `GitHub MCP Tool Executed: [${toolName}] for ${parameters?.owner}/${parameters?.repo || 'repo'}`,
-    details: parameters
-  });
-
-  // If real GitHub token is provided, we can proxy to GitHub REST API
-  if (token && (toolName === 'create_pull_request' || toolName === 'get_file_contents')) {
-    try {
-      if (toolName === 'get_file_contents') {
-        const ghRes = await fetch(`https://api.github.com/repos/${parameters.owner}/${parameters.repo}/contents/${parameters.path}?ref=${parameters.ref || 'main'}`, {
-          headers: {
-            'Authorization': `token ${token}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'RepoHeal-MCP-Daemon'
-          }
-        });
-        if (ghRes.ok) {
-          const data = await ghRes.json();
-          const content = Buffer.from(data.content, 'base64').toString('utf-8');
-          return res.json({ success: true, result: { content, sha: data.sha } });
-        }
-      }
-    } catch (err: any) {
-      console.warn('Real GitHub API call failed, using high-fidelity MCP simulation:', err.message);
-    }
-  }
-
-  // Simulated high-fidelity MCP return
-  let result: any = {};
-  switch (toolName) {
-    case 'create_branch':
-      result = { branch: parameters.branch, ref: `refs/heads/${parameters.branch}`, created: true, sha: '9f8b2c14a' };
-      break;
-    case 'create_pull_request':
-      const prNum = Math.floor(Math.random() * 80) + 120;
-      result = {
-        number: prNum,
-        html_url: `https://github.com/${parameters.owner}/${parameters.repo}/pull/${prNum}`,
-        title: parameters.title,
-        state: 'open',
-        head: parameters.head,
-        base: parameters.base,
-        merged: false
-      };
-      break;
-    case 'push_commit':
-      result = {
-        commitSha: Math.random().toString(16).substring(2, 10),
-        pushed: true,
-        branch: parameters.branch,
-        message: parameters.message
-      };
-      break;
-    case 'revert_commit':
-      daemonState.totalUndone += 1;
-      result = {
-        revertCommitSha: 'rev_' + Math.random().toString(16).substring(2, 10),
-        reverted: true,
-        revertPrUrl: `https://github.com/${parameters.owner}/${parameters.repo}/pull/${Math.floor(Math.random() * 50) + 200}`,
-        restoredToSha: parameters.commitSha
-      };
-      break;
-    case 'send_email_report':
-      result = {
-        delivered: true,
-        recipient: parameters.recipient,
-        timestamp: Date.now(),
-        messageId: `msg_${Date.now()}_repoheal`
-      };
-      break;
-    default:
-      result = { status: 'success', tool: toolName, params: parameters };
-  }
-
-  res.json({ success: true, toolName, result });
+// Legacy MCP execution endpoint is intentionally disabled. Production Pages Functions use
+// authenticated GitHub-specific routes and must never fabricate commits, PRs, or rollbacks.
+app.post('/api/mcp/execute', (_req: Request, res: Response) => {
+  res.status(410).json({ success: false, error: 'Legacy MCP simulation endpoint disabled. Use the authenticated GitHub Pages Functions.' });
 });
 
 // Slack Notification Dispatch Endpoint

@@ -106,7 +106,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
             <div className="max-h-80 overflow-y-auto divide-y divide-black/10">
               {notifications.length === 0 ? (
                 <div className="p-6 text-center text-xs text-[#121212]/60 font-mono">
-                  Zero active notifications. The daemon is monitoring quietly in the background.
+                  No active notifications. Live repository polling is idle until a connected repository and credentials are available.
                 </div>
               ) : (
                 notifications.map((notif) => (

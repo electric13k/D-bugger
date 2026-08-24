@@ -28,6 +28,11 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
 
   if (!run) return null;
 
+  const deliveryVerified = Boolean(run.pullRequestUrl && run.pullRequestNumber && run.pushedCommitSha);
+  const legalAudit = run.pipeline?.legalRiskCheck;
+  const tests = run.pipeline?.unitTestVerification;
+  const hasStoredTestEvidence = Boolean(tests?.generatedTestSnippet && tests.testsRun > 0);
+
   const handleCopyPatch = () => {
     navigator.clipboard.writeText(run.fixedCodeSnippet || run.patchDiff);
     setCopied(true);
@@ -61,7 +66,7 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
                 className="flex items-center gap-1.5 border-2 border-black bg-purple-100 hover:bg-purple-200 text-purple-950 px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] transition-all"
               >
                 <BrainCircuit className="h-3.5 w-3.5 text-purple-800" />
-                AI Thought Process
+                Agent Activity
               </button>
             )}
 
@@ -91,11 +96,11 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
             </span>
             <span className="flex items-center gap-1.5 font-bold">
               <ShieldCheck className="h-4 w-4 text-emerald-800" />
-              Security Score: <strong className="text-emerald-900 font-mono">{run.pipeline?.overallScore || 95}%</strong>
+              Recorded Pipeline Score: <strong className="text-emerald-900 font-mono">{run.pipeline?.overallScore ?? 0}%</strong>
             </span>
-            <span className="flex items-center gap-1.5 font-bold text-emerald-900">
+              <span className={`flex items-center gap-1.5 font-bold ${legalAudit?.status === 'passed' ? 'text-emerald-900' : 'text-amber-900'}`}>
               <Scale className="h-4 w-4 text-emerald-800" />
-              Legal Risk: <strong>0 Viral Violations (Clean)</strong>
+              Legal Risk: <strong>{legalAudit ? `${legalAudit.status.toUpperCase()} (${legalAudit.licenseContamination?.detectedLicenses?.length ?? 0} reported license references)` : 'Not independently verified'}</strong>
             </span>
           </div>
 
@@ -133,7 +138,7 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
           <div className="flex items-start gap-2 text-xs text-[#121212]/90">
             <Sparkles className="h-4 w-4 text-black shrink-0 mt-0.5" />
             <div>
-              <strong className="text-[#121212] font-sans uppercase tracking-wider">AI Root Cause &amp; Patch Strategy:</strong> {run.aiReasoning}
+              <strong className="text-[#121212] font-sans uppercase tracking-wider">Recorded Analysis Summary:</strong> {run.aiReasoning || 'No model or diagnostic summary was returned.'}
             </div>
           </div>
         </div>
@@ -149,18 +154,18 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
                   <span className="text-[10px] font-mono opacity-75">commit {run.commitSha}</span>
                 </div>
                 <pre className="overflow-x-auto text-red-950 font-mono whitespace-pre-wrap leading-relaxed">
-                  {run.originalCodeSnippet || '// Original code context'}
+                  {run.originalCodeSnippet || '// No original source evidence stored for this run.'}
                 </pre>
               </div>
 
               {/* Fixed Code */}
               <div className="border-2 border-emerald-800 bg-emerald-50 p-4 text-[#121212]">
                 <div className="mb-2 flex items-center justify-between text-xs font-bold font-sans uppercase text-emerald-950 border-b border-emerald-300 pb-1">
-                  <span>✅ Autonomous Fix by {run.modelUsed.split('/')[1] || 'AI'}</span>
-                  <span className="text-[10px] font-mono opacity-75">branch {run.branchName}</span>
+                  <span>✅ {deliveryVerified ? `Code in Verified PR (${run.modelUsed.split('/')[1] || 'model'})` : `Diagnostic Proposal (${run.modelUsed.split('/')[1] || 'fallback'})`}</span>
+                  <span className="text-[10px] font-mono opacity-75">{deliveryVerified ? `branch ${run.branchName}` : 'no GitHub branch or commit created'}</span>
                 </div>
                 <pre className="overflow-x-auto text-emerald-950 font-mono whitespace-pre-wrap leading-relaxed">
-                  {run.fixedCodeSnippet || '// Fixed code'}
+                  {run.fixedCodeSnippet || '// No corrected code proposal was returned.'}
                 </pre>
               </div>
             </div>
@@ -169,7 +174,7 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
           {viewMode === 'unified' && (
             <div className="border-2 border-black bg-black p-4 text-[#F9F7F2]">
               <pre className="overflow-x-auto font-mono whitespace-pre-wrap leading-relaxed text-[#F9F7F2]">
-                {run.patchDiff || `--- a/${run.affectedFiles?.[0]}\n+++ b/${run.affectedFiles?.[0]}\n${run.fixedCodeSnippet}`}
+                {run.patchDiff || '// No patch diff was returned for this run.'}
               </pre>
             </div>
           )}
@@ -177,16 +182,11 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
           {viewMode === 'test' && (
             <div className="border-2 border-black bg-purple-50 p-4 text-[#121212]">
               <div className="mb-2 flex items-center justify-between text-xs font-bold font-sans uppercase text-purple-950 border-b border-purple-300 pb-1">
-                <span>🧪 Generated Automated Regression Test Suite</span>
-                <span className="text-[10px] text-purple-900 font-mono font-bold">Verified Passed (0 failures)</span>
+                <span>Recorded Regression Test Evidence</span>
+                <span className="text-[10px] text-purple-900 font-mono font-bold">{hasStoredTestEvidence ? `${tests?.testsPassed || 0}/${tests?.testsRun || 0} recorded` : 'Not executed / not verified'}</span>
               </div>
               <pre className="overflow-x-auto text-purple-950 font-mono whitespace-pre-wrap leading-relaxed">
-                {run.pipeline?.unitTestVerification?.generatedTestSnippet || `describe('${run.bugTitle}', () => {
-  it('prevents recurrence and enforces defensive contracts', async () => {
-    // Assert invariant holds true
-    expect(true).toBe(true);
-  });
-});`}
+                {tests?.generatedTestSnippet || 'No test execution evidence was stored for this run. Add an OpenRouter key and connect a real repository to generate a model proposal, then validate it in CI before merging.'}
               </pre>
             </div>
           )}
@@ -195,21 +195,21 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
         {/* Footer */}
         <div className="flex items-center justify-between border-t-2 border-black bg-[#F9F7F2] px-6 py-4">
           <div>
-            {run.pullRequestUrl && (
+            {deliveryVerified && (
               <a
                 href={run.pullRequestUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-xs font-sans font-bold uppercase tracking-wider text-black hover:underline"
               >
-                Open Pull Request #{run.pullRequestNumber} on GitHub
+                Verified Pull Request #{run.pullRequestNumber} on GitHub
                 <ExternalLink className="h-3.5 w-3.5" />
               </a>
             )}
           </div>
 
           <div className="flex items-center gap-3">
-            {!run.isUndone && (
+            {deliveryVerified && !run.isUndone && (
               <button
                 onClick={() => {
                   onUndo(run);
@@ -222,6 +222,7 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({ run, onClose, onUn
               </button>
             )}
 
+            {!deliveryVerified && <span className="text-[10px] font-mono text-amber-900">No verified GitHub delivery to undo</span>}
             <button
               onClick={onClose}
               className="border border-black bg-white px-4 py-1.5 text-xs font-sans font-bold uppercase tracking-wider text-[#121212] hover:bg-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"

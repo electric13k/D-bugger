@@ -37,7 +37,7 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
 
   if (!isOpen) return null;
 
-  const activeFixes = fixRuns.filter(r => !r.isUndone && r.status !== 'undone');
+  const activeFixes = fixRuns.filter(r => !r.isUndone && r.status !== 'undone' && r.pushedCommitSha && r.pullRequestUrl && r.pullRequestNumber);
   const undoneFixes = fixRuns.filter(r => r.isUndone || r.status === 'undone');
 
   const handleCopyCommands = (commands: string[]) => {
@@ -58,10 +58,10 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
             </div>
             <div>
               <h3 className="font-serif-heading text-lg font-bold uppercase tracking-tight text-[#121212]">
-                1-Click Rollback &amp; Manual Git Undo Center
+                GitHub Delivery Undo &amp; Manual Git Guide
               </h3>
               <p className="text-xs font-sans text-[#121212]/70">
-                Restore clean commit states via GitHub MCP Revert PRs or execute step-by-step CLI commands in your terminal.
+                Only verified D-Bugger pull requests can be undone here. Review-only diagnoses remain visible elsewhere and cannot mutate GitHub.
               </p>
             </div>
           </div>
@@ -85,29 +85,21 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
                 Active Automated Fixes ({activeFixes.length})
               </h4>
               <span className="text-[11px] text-[#121212]/60 font-mono">
-                Full snapshot history maintained for every patch
+                Only verified GitHub deliveries are eligible for undo
               </span>
             </div>
 
             {activeFixes.length === 0 ? (
               <div className="border border-black bg-[#F9F7F2] p-5 text-center text-xs text-[#121212]/60 font-mono shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                No active fixes currently deployed. All patches are clean or already restored.
+                No verified GitHub deliveries are currently eligible for undo. Diagnostic proposals and legacy records are review-only.
               </div>
             ) : (
               <div className="space-y-3">
                 {activeFixes.map((run) => {
-                  const defaultCommands = [
-                    `# 1. Fetch remote changes`,
-                    `git fetch origin`,
-                    `# 2. Create revert branch`,
-                    `git checkout -b revert-dbugger-${run.commitSha}`,
-                    `# 3. Revert automated commit`,
-                    `git revert ${run.pushedCommitSha || run.commitSha} -m 1 --no-edit`,
-                    `# 4. Push revert branch to GitHub`,
-                    `git push origin revert-dbugger-${run.commitSha}`,
-                    `# 5. Open/close PR on GitHub UI`
+                  const commands = run.manualRevertCommands?.length ? run.manualRevertCommands : [
+                    '# No manual revert command was stored for this delivery.',
+                    '# Use the verified pull request and branch details above, then review the change in GitHub.'
                   ];
-                  const commands = run.manualRevertCommands || defaultCommands;
                   const isInspectingCommands = selectedRunForCommands?.id === run.id;
 
                   return (
@@ -122,10 +114,10 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
                               {run.repoName}
                             </span>
                             <span className="text-[11px] font-mono text-[#121212]/80">
-                              PR #{run.pullRequestNumber || 'PR'}
+                              Verified PR #{run.pullRequestNumber}
                             </span>
                             <span className="text-[10px] font-mono font-bold uppercase bg-emerald-100 text-emerald-950 px-1.5 border border-emerald-300">
-                              Score: {run.pipeline?.overallScore || 96}%
+                              Recorded score: {run.pipeline?.overallScore ?? 0}%
                             </span>
                           </div>
                           
@@ -153,7 +145,7 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
                             className="flex items-center justify-center gap-1.5 border border-black bg-amber-200 text-amber-950 px-3.5 py-1.5 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-amber-300 active:translate-x-[1px] active:translate-y-[1px] transition-all disabled:opacity-50"
                           >
                             <RotateCcw className={`h-3.5 w-3.5 ${isUndoingId === run.id ? 'animate-spin' : ''}`} />
-                            {isUndoingId === run.id ? 'Reverting...' : '1-Click Rollback'}
+                            {isUndoingId === run.id ? 'Undoing...' : 'Close PR & Delete Branch'}
                           </button>
                         </div>
                       </div>
@@ -210,16 +202,7 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
                         <span className="text-amber-900 font-mono font-bold uppercase text-[10px] bg-amber-100 px-1.5 border border-amber-300">
                           [Rolled Back]
                         </span>
-                        {run.revertPrUrl && (
-                          <a
-                            href={run.revertPrUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[10px] font-mono text-black underline flex items-center gap-0.5"
-                          >
-                            Revert PR <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                        )}
+                        <span className="text-[10px] font-mono text-amber-900">GitHub undo recorded; no revert PR was fabricated</span>
                       </div>
                       <p className="text-[#121212]/80 mt-0.5">{run.bugTitle}</p>
                       <p className="text-[10px] text-[#121212]/60 font-mono mt-0.5">
@@ -241,7 +224,7 @@ export const UndoCenterModal: React.FC<UndoCenterModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between border-t-2 border-black bg-[#F9F7F2] px-6 py-3">
           <span className="text-xs text-[#121212]/70 font-mono">
-            D-Bugger GitHub MCP Engine preserves all snapshot diffs indefinitely.
+                Undo calls the authenticated GitHub integration; D-Bugger does not claim a rollback unless GitHub confirms it.
           </span>
 
           <button

@@ -64,16 +64,16 @@ export default function App() {
   const [notifications, setNotifications] = useState<InAppNotification[]>([
     {
       id: 'notif-1',
-      title: 'GitHub MCP Watcher Online',
-      message: 'Daemon is monitoring git remotes 24/7 with OpenRouter high-context model reasoning.',
+      title: 'GitHub Watch Ready',
+      message: 'Live repository polling begins after a repository and GitHub token are configured.',
       timestamp: Date.now() - 1000 * 60 * 5,
       type: 'info',
       read: false
     },
     {
       id: 'notif-2',
-      title: '5-Stage Security Gate Ready',
-      message: 'AST syntax, SAST CVE vulnerability scanner, dependency auditor & unit test runner active.',
+      title: 'Evidence Checks Awaiting a Run',
+      message: 'No test, legal, security, or delivery result is assumed until a connected service returns evidence.',
       timestamp: Date.now() - 1000 * 60 * 2,
       type: 'security_gate',
       read: false
@@ -86,19 +86,19 @@ export default function App() {
       id: 'log-1',
       timestamp: Date.now() - 1000 * 60 * 12,
       level: 'info',
-      message: 'Background Daemon started in 24/7 autonomous monitoring mode.',
+      message: 'Background polling is ready; no repository is analyzed until a live connection is configured.',
     },
     {
       id: 'log-2',
       timestamp: Date.now() - 1000 * 60 * 8,
       level: 'mcp',
-      message: 'GitHub MCP bridge mounted on stdio. Tools: get_diff, create_pr, push_commit, revert_commit.',
+      message: 'GitHub integration is idle until a session-only token and a live repository are configured.',
     },
     {
       id: 'log-3',
       timestamp: Date.now() - 1000 * 60 * 4,
       level: 'ai',
-      message: 'OpenRouter Free High-Context Models synchronized (DeepSeek-R1, Llama 3.3 70B, Gemini 2.0 Flash 1M).',
+      message: 'AI analysis is unavailable until the user supplies a session-only OpenRouter key.',
     }
   ]);
 
@@ -215,10 +215,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isRunning: nextState })
       });
-      addLog(nextState ? 'success' : 'warn', `Daemon ${nextState ? 'resumed' : 'paused'} by developer.`);
+      addLog(nextState ? 'success' : 'warn', `Background repository polling ${nextState ? 'resumed' : 'paused'} by developer.`);
       addNotification({
-        title: nextState ? 'Daemon Resumed' : 'Daemon Paused',
-        message: nextState ? '24/7 commit monitoring active.' : 'Background polling paused.',
+        title: nextState ? 'Repository Polling Resumed' : 'Repository Polling Paused',
+        message: nextState ? 'Configured live repositories will be checked on the next polling interval.' : 'Background polling paused.',
         type: 'info'
       });
     } catch (err) {
@@ -240,21 +240,23 @@ export default function App() {
     ].slice(0, 100));
   };
 
-  // Trigger Manual Scan Cycle across repos
+  // Trigger Manual Scan Cycle across all monitored repositories.
   const handleTriggerCycle = async () => {
     setIsCycling(true);
-    addLog('info', 'Scanning all monitored repositories for incoming commits and pull requests...');
-    
-    await new Promise(r => setTimeout(r, 800));
-
-    const scanTargets = repos.length ? repos : DEMO_PRESET_REPOS;
-    if (scanTargets.length > 0) {
-      const randomRepo = scanTargets[Math.floor(Math.random() * scanTargets.length)];
-      await handleScanRepo(randomRepo);
+    setPageView('dashboard');
+    setDashboardTab('overview');
+    addLog('info', 'Scanning configured live repositories for incoming commits and changed source files...');
+    try {
+      const scanTargets = repos.filter(repo => !repo.isMockDemo);
+      if (scanTargets.length === 0) {
+        addLog('warn', 'No live repository is connected. Add a GitHub repository and token before running a real sweep. Sandbox presets were not executed.');
+        return;
+      }
+      for (const repo of scanTargets) await handleScanRepo(repo);
+      addLog('info', `Repository scan cycle completed for ${scanTargets.length} live target(s). The latest run opened its activity summary automatically.`, undefined);
+    } finally {
+      setIsCycling(false);
     }
-
-    setIsCycling(false);
-    addLog('success', 'Repository scan cycle completed. 0 unhandled syntax errors found.');
   };
 
   // Scan & Fix a Specific Repo
@@ -265,6 +267,11 @@ export default function App() {
     try {
       const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
       let repositorySnapshot;
+      if (!githubToken && !repo.isMockDemo) {
+        addLog('warn', `Cannot analyze ${repo.name}: a session-only GitHub token is required to read its current source.`, repo.name);
+        addNotification({ title: 'GitHub Token Required', message: `No live source was read for ${repo.name}. Add a GitHub token in API Credentials, then run the sweep again.`, type: 'error', repoName: repo.name });
+        return;
+      }
       if (githubToken && !repo.isMockDemo) {
         addLog('mcp', `Reading the latest commit and changed source files from ${repo.name}...`, repo.name);
         try {
@@ -280,23 +287,25 @@ export default function App() {
       addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo, undefined, sourceCode, repositorySnapshot?.commitMessage, researchResult, repositorySnapshot);
+      setFixRuns(prev => [fixRun, ...prev].slice(0, 50));
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       const modelEvidence = fixRun.mcpToolLogs.find((entry) => entry.tool === 'ai_analysis')?.output;
       addLog(modelEvidence?.responseReceived ? 'ai' : 'warn', modelEvidence?.responseReceived ? `AI model returned an analysis for ${repo.name}; the concise reasoning summary is available in AI Thoughts.` : 'No AI model response was available; this run used deterministic diagnostics only. Add a session-only OpenRouter key for model analysis.', repo.name);
-      const deliveryVerified = Boolean(fixRun.pullRequestNumber && fixRun.pushedCommitSha);
-      addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
+      const deliveryVerified = Boolean(fixRun.pullRequestUrl && fixRun.pullRequestNumber && fixRun.pushedCommitSha);
+      addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready for human review' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (Recorded pipeline score: ${fixRun.pipeline?.overallScore ?? 0}%)`, repo.name);
       addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'Connect a real repository and GitHub token to deliver a PR.'), repo.name);
       
       addNotification({
-        title: deliveryVerified ? `Auto-Fixed: ${fixRun.bugTitle}` : `Diagnosis Complete: ${fixRun.bugTitle}`,
-        message: deliveryVerified ? `Security Grade ${fixRun.pipeline.overallScore}%. PR #${fixRun.pullRequestNumber} opened on ${repo.name}.` : `Security Grade ${fixRun.pipeline.overallScore}%. No GitHub changes were made; review the diagnosis in the console.`,
+        title: deliveryVerified ? `Verified PR Ready: ${fixRun.bugTitle}` : `Diagnosis Complete: ${fixRun.bugTitle}`,
+        message: deliveryVerified ? `Recorded pipeline score ${fixRun.pipeline?.overallScore ?? 0}%. Verified PR #${fixRun.pullRequestNumber} opened on ${repo.name}.` : `Recorded pipeline score ${fixRun.pipeline?.overallScore ?? 0}%. No GitHub changes were made; review the diagnosis in the console.`,
         type: deliveryVerified ? 'fix_success' : 'info',
         repoName: repo.name,
-        prUrl: fixRun.pullRequestUrl
+        prUrl: deliveryVerified ? fixRun.pullRequestUrl : undefined
       });
 
+      setThoughtStreamRun(fixRun);
       if (fixRun.pushedCommitSha) {
-        addLog('success', `Auto-pushed commit ${fixRun.pushedCommitSha} (Pipeline certified ≥${repo.securityThreshold}%)`, repo.name);
+        addLog('success', `Verified GitHub commit ${fixRun.pushedCommitSha} was created; open AI Thoughts for the evidence trail.`, repo.name);
       }
 
       if (fixRun.emailSent) {
@@ -331,26 +340,50 @@ export default function App() {
       addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
       addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit, researchResult);
+      setFixRuns(prev => [fixRun, ...prev].slice(0, 50));
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       const modelEvidence = fixRun.mcpToolLogs.find((entry) => entry.tool === 'ai_analysis')?.output;
       addLog(modelEvidence?.responseReceived ? 'ai' : 'warn', modelEvidence?.responseReceived ? `AI model returned an analysis for ${repo.name}; the concise reasoning summary is available in AI Thoughts.` : 'No AI model response was available; this simulation used deterministic diagnostics only.', repo.name);
-      const deliveryVerified = Boolean(fixRun.pullRequestNumber && fixRun.pushedCommitSha);
+      const deliveryVerified = Boolean(fixRun.pullRequestUrl && fixRun.pullRequestNumber && fixRun.pushedCommitSha);
       addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
       addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on ${repo.name}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'This is a simulation path; connect a real repository for delivery.'), repo.name);
       
       addNotification({
-        title: deliveryVerified ? `Auto-Fixed: ${fixRun.bugTitle}` : `Simulation Diagnosis: ${fixRun.bugTitle}`,
+        title: deliveryVerified ? `Verified PR Ready: ${fixRun.bugTitle}` : `Sandbox Diagnosis: ${fixRun.bugTitle}`,
         message: deliveryVerified ? `Fixed "${fixRun.bugTitle}" on ${repo.name} with ${repo.openRouterModel}.` : `Diagnosed "${fixRun.bugTitle}" on ${repo.name}; no GitHub changes were made.`,
         type: deliveryVerified ? 'fix_success' : 'info',
         repoName: repo.name,
-        prUrl: fixRun.pullRequestUrl
+        prUrl: deliveryVerified ? fixRun.pullRequestUrl : undefined
       });
 
-      // Auto open the diff modal for immediate feedback
-      setDiffModalRun(fixRun);
+      // Keep the diff available for explicit inspection, but open the evidence-backed thought stream first.
+      setThoughtStreamRun(fixRun);
     } finally {
       setIsScanningRepoId(null);
     }
+  };
+
+  const handleThoughtFollowUp = async (run: BugFixRun, prompt: string) => {
+    addLog('ai', `Sending follow-up question to ${run.modelUsed} about ${run.repoName}/${run.affectedFiles?.[0] || 'the run'}...`, run.repoName);
+    const response = await fetch('/api/ai/follow-up', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: run.modelUsed,
+        userApiKey: readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key'),
+        repoName: run.repoName,
+        filePath: run.affectedFiles?.[0],
+        commitSha: run.commitSha,
+        originalCode: run.originalCodeSnippet,
+        fixedCode: run.fixedCodeSnippet,
+        aiReasoning: run.aiReasoning,
+        prompt,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || typeof payload.answer !== 'string') throw new Error(payload.error || `Follow-up failed (${response.status})`);
+    addLog('ai', `Follow-up response received from ${payload.modelUsed || run.modelUsed}.`, run.repoName);
+    return payload.answer;
   };
 
   // 1-Click Undo / Rollback
@@ -361,10 +394,11 @@ export default function App() {
     try {
       const success = await DaemonService.undoFix(run);
       if (success) {
-        addLog('success', `Rollback completed! Revert commit generated and branch restored for ${run.repoName}.`, run.repoName);
+        setFixRuns(prev => prev.map(item => item.id === run.id ? { ...item, status: 'undone', isUndone: true, canUndo: false } : item));
+        addLog('success', `GitHub undo completed: Pull Request #${run.pullRequestNumber} was closed and branch ${run.branchName} was deleted.`, run.repoName);
         addNotification({
-          title: `1-Click Rollback Completed`,
-          message: `Reverted commit ${run.commitSha} on ${run.repoName}. Revert PR #${run.pullRequestNumber ? run.pullRequestNumber + 1 : 999} opened.`,
+          title: `Verified GitHub Fix Undone`,
+          message: `Closed Pull Request #${run.pullRequestNumber} and deleted branch ${run.branchName} on ${run.repoName}.`,
           type: 'rollback',
           repoName: run.repoName
         });
@@ -433,8 +467,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipient,
-          subject: `[D-Bugger MCP] Autonomous Fix Digest (${fixRuns.length} Resolved Bugs)`,
-          summary: `Summary of ${fixRuns.length} automated bug fixes with 5-stage secure review certification.`,
+          subject: `[D-Bugger] Repository Run Digest (${fixRuns.length} Runs)`,
+          summary: `Summary of ${fixRuns.length} stored repository runs, including diagnostic proposals and verified GitHub delivery where present.`,
           fixes: fixRuns.map(r => r.id),
         })
       });
@@ -505,18 +539,18 @@ export default function App() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
                     <span className="text-[10px] font-sans font-bold uppercase tracking-[0.2em] text-[#121212]">
-                      Fleet Watcher Active
+                      Repository Evidence Dashboard
                     </span>
                     <span className="text-xs text-black/40">•</span>
                     <span className="text-[10px] font-mono uppercase tracking-wider text-[#121212]/70 bg-[#F9F7F2] border border-black/30 px-2 py-0.5">
-                      OpenRouter Free High-Context Models
+                      User-Key OpenRouter Analysis
                     </span>
                   </div>
                   <h1 className="font-serif-heading text-3xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight text-[#121212] leading-none">
-                    Autonomous Code Fleet Dashboard
+                    Repository Evidence Dashboard
                   </h1>
                   <p className="text-xs sm:text-sm font-sans text-[#121212]/70 leading-relaxed max-w-3xl pt-1">
-                    Continuous 24/7 background commit watcher powered by GitHub MCP and high-context reasoning. Detects memory leaks, SQL CVEs, race conditions &amp; syntax crashes, executes 5-stage secure review validation, submits pull requests, auto-pushes verified patches, and preserves 1-click rollback snapshots.
+                    Read live GitHub commits, gather automatic Gridscape research, produce an evidence-backed diagnosis, and show the model response and validation state. No test, merge, PR, or rollback is claimed without a verified result.
                   </p>
                 </div>
 
@@ -535,7 +569,7 @@ export default function App() {
                     className="flex items-center justify-center gap-2 bg-black text-[#F9F7F2] border border-black px-5 py-3 text-xs font-sans font-bold uppercase tracking-[0.15em] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 active:translate-x-[1px] active:translate-y-[1px] transition-all"
                   >
                     <Flame className="h-4 w-4 text-amber-300" />
-                    Simulate Commit &amp; Auto-Fix
+Open Sandbox Playground
                   </button>
                 </div>
               </div>
@@ -691,6 +725,7 @@ export default function App() {
       <AIThoughtStreamModal
         run={thoughtStreamRun}
         onClose={() => setThoughtStreamRun(null)}
+        onFollowUp={handleThoughtFollowUp}
       />
 
       {/* Email Report Composer & Preview Modal */}

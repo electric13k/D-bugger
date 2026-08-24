@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   BrainCircuit, 
@@ -13,6 +13,8 @@ import {
   Play, 
   Terminal,
   Activity,
+  MessageCircle,
+  Send,
   Maximize2,
   FileSearch,
   Zap,
@@ -22,84 +24,61 @@ import { BugFixRun, AgentThoughtStep } from '../types';
 
 interface AIThoughtStreamModalProps {
   run: BugFixRun | null;
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
+  onFollowUp?: (run: BugFixRun, prompt: string) => Promise<string>;
 }
 
 export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
   run,
   isOpen,
-  onClose
+  onClose,
+  onFollowUp
 }) => {
   const [selectedStepIdx, setSelectedStepIdx] = useState<number>(0);
   const [showRawJson, setShowRawJson] = useState(false);
+  const [followUp, setFollowUp] = useState('');
+  const [followUpAnswer, setFollowUpAnswer] = useState('');
+  const [followUpError, setFollowUpError] = useState('');
+  const [isFollowingUp, setIsFollowingUp] = useState(false);
 
-  if (!isOpen || !run) return null;
+  useEffect(() => {
+    setSelectedStepIdx(0);
+    setShowRawJson(false);
+    setFollowUp('');
+    setFollowUpAnswer('');
+    setFollowUpError('');
+    setIsFollowingUp(false);
+  }, [run?.id]);
 
-  // Fallback realistic AI thought steps if none stored
-  const thoughtSteps: AgentThoughtStep[] = run.aiThoughtStream?.length ? run.aiThoughtStream : [
-    {
-      id: 'step-1',
-      phase: 'ast_ingestion',
-      timestamp: run.timestamp - 14000,
-      title: 'AST Ingestion & Call-Graph Reconstruction',
-      thought: `Parsing abstract syntax tree for ${run.affectedFiles?.[0] || 'repository source'}. Extracted 14 AST nodes, 6 function signatures, and 3 asynchronous promise chains. Identified execution branch with race condition / null vulnerability.`,
-      confidence: 99,
-      astNodeInvestigated: 'AsyncFunctionDeclaration -> TryCatchBlock -> StateMutex',
-      verdict: 'passed'
-    },
-    {
-      id: 'step-2',
-      phase: 'root_cause_deduction',
-      timestamp: run.timestamp - 10000,
-      title: 'Root Cause Hypothesis Deduction',
-      thought: `Analyzing why the runtime fails on commit ${run.commitSha}. Deduction: ${run.aiReasoning}. State mutated without proper synchronization locks, causing intermittent race conditions and memory leaks.`,
-      confidence: 96,
-      astNodeInvestigated: 'VariableStatement[name="sharedBuffer"]',
-      codeInspection: run.originalCodeSnippet || '// Vulnerable code context',
-      verdict: 'warning'
-    },
-    {
-      id: 'step-3',
-      phase: 'legal_risk_audit',
-      timestamp: run.timestamp - 7000,
-      title: 'Legal & Intellectual Property Risk Audit',
-      thought: `Auditing candidate patch logic against viral copyleft licenses (GPL v2/v3, AGPL), trademark exposures, and proprietary secrets. Confirmed 0 GPL contamination, 0 leaked API keys, and pure MIT/Apache compatible implementation.`,
-      confidence: 98,
-      astNodeInvestigated: 'ComplianceMatrix[ISO27001, SOC2, OWASP]',
-      verdict: 'passed'
-    },
-    {
-      id: 'step-4',
-      phase: 'patch_synthesis',
-      timestamp: run.timestamp - 4000,
-      title: 'High-Context Patch Synthesis & Self-Correction',
-      thought: `Synthesized atomic defensive patch using model ${run.modelUsed}. Replaced unsynchronized mutation with atomic read-write mutex lock and added defensive optional chaining.`,
-      confidence: 97,
-      codeInspection: run.fixedCodeSnippet || '// Atomic patch logic',
-      verdict: 'synthesizing'
-    },
-    {
-      id: 'step-5',
-      phase: 'unit_test_run',
-      timestamp: run.timestamp - 1000,
-      title: 'Sandbox Unit Test Execution & Verification',
-      thought: `Executed sandbox regression suite (8/8 tests passed). Verified 0 memory leaks, 0 thread locks, and API contract preservation across existing consumers.`,
-      confidence: 99,
-      verdict: 'success'
-    },
-    {
-      id: 'step-6',
-      phase: 'mcp_delivery',
-      timestamp: run.timestamp,
-      title: 'GitHub MCP Branch & Pull Request Delivery',
-      thought: `Branch ${run.branchName} created and verified via GitHub MCP agent. Pull request prepared with detailed forensic analysis and 1-click rollback snapshot.`,
-      confidence: 100,
-      verdict: 'success'
-    }
-  ];
+  if ((isOpen === false) || !run) return null;
+
+  const thoughtSteps: AgentThoughtStep[] = run.aiThoughtStream?.length ? run.aiThoughtStream : [{
+    id: `trace-missing-${run.id}`,
+    phase: 'ast_ingestion',
+    timestamp: run.timestamp,
+    title: 'No stored agent trace',
+    thought: 'This run does not contain a verified agent activity trace. No AST analysis, model reasoning, test execution, branch creation, or pull request should be inferred from this record.',
+    confidence: 0,
+    codeInspection: run.originalCodeSnippet || 'No source evidence stored for this run.',
+    verdict: 'warning'
+  }];
 
   const activeStep = thoughtSteps[selectedStepIdx] || thoughtSteps[0];
+  const handleFollowUp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!onFollowUp || !followUp.trim() || isFollowingUp) return;
+    setIsFollowingUp(true);
+    setFollowUpError('');
+    try {
+      setFollowUpAnswer(await onFollowUp(run, followUp.trim()));
+      setFollowUp('');
+    } catch (error: any) {
+      setFollowUpError(error?.message || 'Follow-up could not be completed.');
+    } finally {
+      setIsFollowingUp(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm overflow-y-auto">
@@ -114,14 +93,14 @@ export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-serif-heading text-lg font-bold uppercase tracking-tight text-[#121212]">
-                  Cognitive Inspector &bull; AI Thought Stream
+                  Agent Activity Inspector &bull; Run Evidence
                 </h3>
                 <span className="text-[10px] font-mono font-bold bg-purple-100 text-purple-900 px-2 py-0.5 border border-purple-800 uppercase">
-                  Live Reasoning Chain
+                  Live Agent Activity Summary
                 </span>
               </div>
               <p className="text-xs text-[#121212]/70">
-                Inspect how <strong className="font-mono text-black">{run.modelUsed}</strong> analyzed the codebase, deduced root cause, and verified legal compliance.
+                Inspect the recorded activity, repository evidence, model response summary, validation status, and GitHub delivery result for this run.
               </p>
             </div>
           </div>
@@ -151,7 +130,7 @@ export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
           </div>
           <div className="flex items-center gap-2 font-bold text-emerald-900 bg-emerald-100 px-2.5 py-0.5 border border-black">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Confidence: {activeStep.confidence}%
+            Recorded confidence: {activeStep.confidence > 0 ? `${activeStep.confidence}%` : 'not provided'}
           </div>
         </div>
 
@@ -174,7 +153,7 @@ export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
             {/* Left Steps Rail */}
             <div className="md:col-span-5 bg-[#F9F7F2] p-4 space-y-2 overflow-y-auto max-h-[520px]">
               <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-[#121212]/70 mb-2">
-                Chain-of-Thought Steps ({thoughtSteps.length})
+                Observed Agent Steps ({thoughtSteps.length})
               </div>
 
               {thoughtSteps.map((step, idx) => {
@@ -235,11 +214,11 @@ export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
                 </div>
               </div>
 
-              {/* Internal Cognitive Monologue */}
+              {/* Evidence-backed Reasoning Summary */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-[#121212] flex items-center gap-1.5">
                   <Sparkles className="h-3.5 w-3.5 text-black" />
-                  Model Cognitive Monologue:
+                  Model Reasoning Summary:
                 </label>
                 <div className="border-2 border-black bg-[#F9F7F2] p-4 text-xs font-sans text-[#121212] leading-relaxed shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                   {activeStep.thought}
@@ -272,17 +251,17 @@ export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
                 </div>
               )}
 
-              {/* Legal & Safety Verification Badge */}
+              {/* Legal and safety result from the stored run */}
               <div className="border border-black bg-emerald-50 p-3 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <Scale className="h-4 w-4 text-emerald-800" />
                   <div>
-                    <span className="font-bold text-emerald-950 block">Legal &amp; IP Risk Clearance: PASSED</span>
-                    <span className="text-[10px] text-emerald-900/80 font-mono">0 copyleft violations, 0 proprietary token leaks detected.</span>
+                  <span className="font-bold text-emerald-950 block">Legal &amp; IP Risk Result: {run.pipeline?.legalRiskCheck?.status === 'passed' ? 'REPORTED PASSED' : 'NOT VERIFIED'}</span>
+                  <span className="text-[10px] text-emerald-900/80 font-mono">{run.pipeline?.legalRiskCheck?.legalSignoffSummary || 'No independent legal or secret scan evidence was stored.'}</span>
                   </div>
                 </div>
                 <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-950 px-2 py-0.5 border border-emerald-900">
-                  Certified Safe
+                  {run.pipeline?.passed ? 'Reported Gate Passed' : 'Review Required'}
                 </span>
               </div>
 
@@ -314,11 +293,27 @@ export const AIThoughtStreamModal: React.FC<AIThoughtStreamModalProps> = ({
           </div>
         )}
 
+        {onFollowUp && (
+          <div className="border-t-2 border-black bg-white px-6 py-4 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#121212]">
+              <MessageCircle className="h-3.5 w-3.5" /> Ask a follow-up about this run
+            </div>
+            {followUpAnswer && <div className="border-2 border-black bg-[#F9F7F2] p-3 text-xs leading-relaxed whitespace-pre-wrap">{followUpAnswer}</div>}
+            {followUpError && <div className="border border-red-800 bg-red-50 p-2 text-xs text-red-950">{followUpError}</div>}
+            <form onSubmit={handleFollowUp} className="flex gap-2">
+              <input value={followUp} onChange={(event) => setFollowUp(event.target.value)} placeholder="Why was this file changed? What should I verify next?" className="min-w-0 flex-1 border-2 border-black bg-[#F9F7F2] px-3 py-2 text-xs font-mono focus:outline-none" />
+              <button type="submit" disabled={isFollowingUp || !followUp.trim()} className="flex items-center gap-1.5 border-2 border-black bg-black text-[#F9F7F2] px-3 py-2 text-xs font-bold uppercase disabled:opacity-40">
+                <Send className="h-3.5 w-3.5" /> {isFollowingUp ? 'Asking...' : 'Ask'}
+              </button>
+            </form>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between border-t-2 border-black bg-[#F9F7F2] px-6 py-3">
           <div className="flex items-center gap-2 text-xs text-[#121212]/70 font-mono">
             <Activity className="h-3.5 w-3.5 text-emerald-700" />
-            Daemon continuously traces AST transformations and legal sign-offs for all PRs.
+            This panel shows stored agent activity summaries and evidence. It does not infer hidden reasoning, tests, commits, or PRs that were not returned by the system.
           </div>
           <button
             onClick={onClose}

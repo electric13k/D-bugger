@@ -40,38 +40,8 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
 
   if (!run) return null;
 
-  const pipeline = run.pipeline || {
-    passed: true,
-    overallScore: 97,
-    astSyntaxCheck: { status: 'passed', message: 'AST parsed cleanly with zero syntax errors', score: 98 },
-    securityVulnerabilityScan: { status: 'passed', vulnerabilitiesFound: [], score: 97 },
-    legalRiskCheck: {
-      status: 'passed',
-      score: 99,
-      licenseContamination: {
-        status: 'passed',
-        detectedLicenses: ['MIT', 'Apache-2.0'],
-        viralRisk: false,
-        detail: 'Zero GPL/AGPL copyleft contamination detected in generated patch diff.'
-      },
-      secretLeakGuard: {
-        status: 'passed',
-        secretsFound: [],
-        detail: 'Scanned 14 entropy patterns; 0 private tokens, API secrets, or passwords exposed.'
-      },
-      copyrightIntegrity: {
-        status: 'passed',
-        uncreditedCopyDetected: false,
-        detail: 'Patch synthesized from first-principles AST reasoning with verified clean-room origin.'
-      },
-      complianceFrameworks: ['SOC2 Type II', 'GDPR Art. 32', 'OWASP Top 10', 'CWE-400 / CWE-787'],
-      legalSignoffSummary: 'Approved: Code is clear of viral copyleft licenses, proprietary IP leaks, and restricted cryptographic modules.'
-    },
-    unitTestVerification: { status: 'passed', testsRun: 8, testsPassed: 8, score: 95 },
-    dependencyCheck: { status: 'passed', dependenciesAudited: 14, score: 99 },
-    breakingChangeCheck: { status: 'passed', apiContractsPreserved: true, score: 99 },
-    regressionGuard: { status: 'passed', confidence: 97 }
-  };
+  const pipeline = run.pipeline;
+  const hasPipelineEvidence = Boolean(pipeline && (pipeline.overallScore > 0 || pipeline.astSyntaxCheck || pipeline.unitTestVerification));
 
   const handleApprove = () => {
     setHumanApproved(true);
@@ -83,57 +53,57 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
       step: 1,
       name: 'AST Syntax & Static Analysis',
       icon: Layers,
-      status: pipeline.astSyntaxCheck?.status || 'passed',
-      score: pipeline.astSyntaxCheck?.score || 98,
-      description: pipeline.astSyntaxCheck?.message || 'Abstract Syntax Tree parsed with 0 syntax or type errors.',
-      details: 'TypeScript 5.8 AST validation verified zero syntax regressions.'
+      status: pipeline?.astSyntaxCheck?.status || 'warning',
+      score: pipeline?.astSyntaxCheck?.score ?? 0,
+      description: pipeline?.astSyntaxCheck?.message || 'Not executed or not verified for this run.',
+      details: 'No independent AST/type-check result is stored in this run.'
     },
     {
       step: 2,
       name: 'Security SAST & CVE Scan',
       icon: ShieldCheck,
-      status: pipeline.securityVulnerabilityScan?.status || 'passed',
-      score: pipeline.securityVulnerabilityScan?.score || 97,
-      description: pipeline.securityVulnerabilityScan?.vulnerabilitiesFound?.length 
-        ? `Found ${pipeline.securityVulnerabilityScan.vulnerabilitiesFound.join(', ')}` 
-        : '0 vulnerabilities detected. Sanitized all SQL/XSS/Memory leak vectors.',
-      details: 'Deep vulnerability scanner checked OWASP Top 10, CWE-400, and buffer race conditions.'
+      status: pipeline?.securityVulnerabilityScan?.status || 'warning',
+      score: pipeline?.securityVulnerabilityScan?.score ?? 0,
+      description: pipeline?.securityVulnerabilityScan?.vulnerabilitiesFound?.length
+        ? `Reported findings: ${pipeline.securityVulnerabilityScan.vulnerabilitiesFound.join(', ')}`
+        : 'Not executed or no findings evidence was stored.',
+      details: 'This screen does not substitute for a repository SAST/CVE runner.'
     },
     {
       step: 3,
       name: 'Legal & Intellectual Property Compliance Shield',
       icon: Scale,
-      status: pipeline.legalRiskCheck?.status || 'passed',
-      score: pipeline.legalRiskCheck?.score || 99,
-      description: pipeline.legalRiskCheck?.legalSignoffSummary || '0 viral GPL/AGPL contamination, 0 secret token leaks, verified clean-room origin.',
-      details: `Compliant with ${pipeline.legalRiskCheck?.complianceFrameworks?.join(', ') || 'SOC2, GDPR, OWASP'}.`
+      status: pipeline?.legalRiskCheck?.status || 'warning',
+      score: pipeline?.legalRiskCheck?.score ?? 0,
+      description: pipeline?.legalRiskCheck?.legalSignoffSummary || 'No independent legal, license, or secret-scan evidence was stored.',
+      details: pipeline?.legalRiskCheck?.complianceFrameworks?.length ? `Reported frameworks: ${pipeline.legalRiskCheck.complianceFrameworks.join(', ')}.` : 'No compliance framework assessment is available.'
     },
     {
       step: 4,
       name: 'Dependency Supply-Chain Audit',
       icon: FileCheck,
-      status: pipeline.dependencyCheck?.status || 'passed',
-      score: pipeline.dependencyCheck?.score || 99,
-      description: 'Zero malicious package injections or unpinned lockfile mutations detected.',
-      details: 'Audited all package dependencies and direct imports against OSV database.'
+      status: pipeline?.dependencyCheck?.status || 'warning',
+      score: pipeline?.dependencyCheck?.score ?? 0,
+      description: pipeline?.dependencyCheck ? `${pipeline.dependencyCheck.dependenciesAudited} dependencies audited in the recorded result.` : 'Not executed or not verified for this run.',
+      details: 'No live package or lockfile audit is performed by this inspector.'
     },
     {
       step: 5,
       name: 'Automated Unit Test & Regression Runner',
       icon: Terminal,
-      status: pipeline.unitTestVerification?.status || 'passed',
-      score: pipeline.unitTestVerification?.score || 95,
-      description: `${pipeline.unitTestVerification?.testsPassed || 8}/${pipeline.unitTestVerification?.testsRun || 8} unit tests passed in sandbox runner.`,
-      details: 'Generated edge-case regression test assertions and executed sandbox validation.'
+      status: pipeline?.unitTestVerification?.status || 'warning',
+      score: pipeline?.unitTestVerification?.score ?? 0,
+      description: pipeline?.unitTestVerification ? `${pipeline.unitTestVerification.testsPassed}/${pipeline.unitTestVerification.testsRun} recorded tests passed.` : 'Not executed / not verified.',
+      details: 'D-Bugger does not claim remote CI results unless they are explicitly returned and stored.'
     },
     {
       step: 6,
       name: 'Confidence Gate & Human Review Gate',
       icon: UserCheck,
-      status: pipeline.passed ? 'passed' : 'warning',
-      score: pipeline.overallScore,
-      description: `Overall Pipeline Grade: ${pipeline.overallScore}/100. Certified safe for automated Pull Request & Push.`,
-      details: `Model ${run.modelUsed} met strict security and legal clearance criteria.`
+      status: pipeline?.passed ? 'passed' : 'warning',
+      score: pipeline?.overallScore ?? 0,
+      description: hasPipelineEvidence ? `Recorded pipeline result: ${pipeline?.overallScore ?? 0}/100. Human review is still required before merge.` : 'No complete pipeline result is available for this run.',
+      details: `Model response: ${run.modelUsed || 'not recorded'}. This inspector does not certify safety or merge readiness.`
     }
   ];
 
@@ -149,10 +119,10 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
             </div>
             <div>
               <h3 className="font-serif-heading text-lg font-bold uppercase tracking-tight text-[#121212]">
-                Secure Code Review &amp; Legal Compliance Inspector
+                Repository Evidence Inspector
               </h3>
               <p className="text-xs font-sans text-[#121212]/70">
-                6-Stage Autonomous Gate for <span className="font-mono font-bold text-black">{run.repoName}</span>
+                6-Stage Evidence Review for <span className="font-mono font-bold text-black">{run.repoName}</span>
               </p>
             </div>
           </div>
@@ -183,7 +153,7 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
             <div className="text-[11px] font-bold uppercase tracking-wider text-[#121212]/70">Pipeline Pass Status</div>
             <div className="flex items-center gap-2 mt-1">
               <span className="inline-flex items-center gap-1 text-xs font-bold uppercase text-emerald-950 bg-emerald-200 px-2.5 py-0.5 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Pipeline &amp; Legal Certified (PASSED)
+                {pipeline?.passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />} {pipeline?.passed ? 'Reported gate passed' : 'Review required; gate not verified'}
               </span>
               <span className="text-xs font-mono text-[#121212]/80">
                 via <strong className="text-black font-mono">{run.modelUsed}</strong>
@@ -192,9 +162,9 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
           </div>
 
           <div className="text-right">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[#121212]/70">Composite Security &amp; IP Score</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[#121212]/70">Recorded Pipeline Score</div>
             <div className="text-3xl font-bold font-serif-heading text-[#121212] tracking-tight">
-              {pipeline.overallScore}/100
+              {pipeline?.overallScore ?? 0}/100
             </div>
           </div>
         </div>
@@ -232,7 +202,7 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
 
                   <div className="shrink-0">
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase text-emerald-950 bg-emerald-200 px-2 py-0.5 border border-black">
-                      <CheckCircle2 className="h-3 w-3" /> Passed
+                      {stage.status === 'passed' ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />} {stage.status === 'passed' ? 'Reported passed' : stage.status === 'failed' ? 'Failed' : 'Not verified'}
                     </span>
                   </div>
                 </div>
@@ -258,7 +228,7 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
                     onClick={handleApprove}
                     className="flex items-center gap-1 border border-black bg-emerald-200 text-emerald-950 px-3 py-1 text-xs font-sans font-bold uppercase tracking-wider shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-300"
                   >
-                    <ThumbsUp className="h-3.5 w-3.5" /> Approve &amp; Merge PR
+                    <ThumbsUp className="h-3.5 w-3.5" /> Record Review Decision
                   </button>
                   <button
                     onClick={onClose}
@@ -275,7 +245,7 @@ export const ReviewPipelineInspector: React.FC<ReviewPipelineInspectorProps> = (
         {/* Footer */}
         <div className="flex items-center justify-between border-t-2 border-black bg-[#F9F7F2] px-6 py-3">
           <span className="text-xs font-mono text-[#121212]/70">
-            Automated CI/CD security gate &amp; legal risk clearance enforced prior to GitHub PR creation.
+            Evidence shown here is run output only; no CI, legal clearance, merge, or GitHub mutation is implied unless separately verified.
           </span>
 
           <button

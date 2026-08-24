@@ -48,12 +48,13 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
     }
   };
 
-  const totalFixes = fixRuns.length;
-  const passedFixes = fixRuns.filter(r => r.pipeline?.passed);
-  const failedFixes = fixRuns.filter(r => r.status === 'failed' || (r.pipeline && !r.pipeline.passed));
-  const avgScore = totalFixes > 0
-    ? Math.round(fixRuns.reduce((sum, r) => sum + (r.pipeline?.overallScore || 95), 0) / totalFixes)
-    : 96;
+  const totalRuns = fixRuns.length;
+  const verifiedRuns = fixRuns.filter(r => r.pullRequestUrl && r.pullRequestNumber && r.pushedCommitSha);
+  const reviewRuns = fixRuns.filter(r => !r.pipeline?.passed || r.status === 'awaiting_human_review' || !r.pullRequestNumber);
+  const scoredRuns = fixRuns.filter(r => typeof r.pipeline?.overallScore === 'number' && r.pipeline.overallScore > 0);
+  const avgScore = scoredRuns.length
+    ? Math.round(scoredRuns.reduce((sum, r) => sum + (r.pipeline?.overallScore ?? 0), 0) / scoredRuns.length)
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm overflow-y-auto">
@@ -67,10 +68,10 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
             </div>
             <div>
               <h3 className="font-serif-heading text-lg font-bold uppercase tracking-tight text-[#121212]">
-                Automated Bug Fix Summary Reports
+                Repository Run Summary Reports
               </h3>
               <p className="text-xs font-sans text-[#121212]/70">
-                Scheduled background digests with security audit scores, fixed/failed metrics &amp; 1-click rollback affordances.
+                A preview of stored repository evidence, diagnostic proposals, validation results, and verified GitHub delivery.
               </p>
             </div>
           </div>
@@ -128,7 +129,7 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
               Live HTML Email Preview (Rendered Template)
             </div>
             <span className="text-[10px] text-[#121212]/70 font-mono font-bold">
-              Subject: [D-Bugger Report] Autonomous Fixes ({totalFixes} Patches, 0 Blocked)
+              Subject: [D-Bugger Report] Repository Runs ({totalRuns} Runs, {reviewRuns.length} Review Required)
             </span>
           </div>
 
@@ -141,33 +142,33 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
                 <h1 className="font-serif-heading text-xl font-bold uppercase tracking-tight text-[#121212]">
                   D-Bugger Git Daemon Digest
                 </h1>
-                <p className="text-xs text-[#121212]/70 mt-0.5">Autonomous Code Health, Security Gate &amp; Pull Request Report</p>
+                  <p className="text-xs text-[#121212]/70 mt-0.5">Repository evidence, diagnostics, validation status, and GitHub delivery report</p>
               </div>
               <span className="bg-black text-[#F9F7F2] text-[10px] font-sans font-bold uppercase tracking-wider px-2.5 py-1 border border-black">
-                Active 24/7
+                Evidence Report
               </span>
             </div>
 
             {/* Email Metrics Row */}
             <div className="grid grid-cols-3 gap-3 bg-white p-3 border-2 border-black mb-5 text-center text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
               <div>
-                <div className="text-[10px] font-sans uppercase font-bold text-[#121212]/60">Bugs Auto-Healed</div>
-                <div className="text-xl font-bold font-serif-heading text-[#121212]">{totalFixes}</div>
+                <div className="text-[10px] font-sans uppercase font-bold text-[#121212]/60">Runs Recorded</div>
+                <div className="text-xl font-bold font-serif-heading text-[#121212]">{totalRuns}</div>
               </div>
               <div>
-                <div className="text-[10px] font-sans uppercase font-bold text-[#121212]/60">Security Pass Rate</div>
-                <div className="text-xl font-bold font-serif-heading text-emerald-800">{avgScore}%</div>
+                <div className="text-[10px] font-sans uppercase font-bold text-[#121212]/60">Verified PRs</div>
+                <div className="text-xl font-bold font-serif-heading text-emerald-800">{verifiedRuns.length}</div>
               </div>
               <div>
-                <div className="text-[10px] font-sans uppercase font-bold text-[#121212]/60">Failed / Blocked</div>
-                <div className="text-xl font-bold font-serif-heading text-[#121212]">{failedFixes.length}</div>
+                <div className="text-[10px] font-sans uppercase font-bold text-[#121212]/60">Review Required</div>
+                <div className="text-xl font-bold font-serif-heading text-[#121212]">{reviewRuns.length}</div>
               </div>
             </div>
 
             {/* Fixes Breakdown */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-[#121212] uppercase tracking-wider border-b border-black/20 pb-1">
-                Recent Autonomous Fixes
+                Recent Repository Runs
               </h3>
 
               {fixRuns.slice(0, 4).map((run) => (
@@ -182,16 +183,16 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
                       </p>
                     </div>
                     <span className="text-emerald-950 font-mono font-bold bg-emerald-200 border border-black px-2 py-0.5 text-[10px] uppercase">
-                      {run.pipeline?.overallScore || 95}% Safe
+                      {run.pipeline?.overallScore ? `Recorded ${run.pipeline.overallScore}%` : 'Score not verified'}
                     </span>
                   </div>
 
                   <div className="mt-2.5 pt-2 border-t border-black/10 flex items-center justify-between text-[11px] font-mono">
                     <span className="text-[#121212]/70">
-                      PR #{run.pullRequestNumber || 'PR'} | Branch: {run.branchName}
+                      {run.pullRequestUrl && run.pullRequestNumber && run.pushedCommitSha ? `Verified PR #${run.pullRequestNumber} | Branch: ${run.branchName}` : 'No verified GitHub PR or commit'}
                     </span>
-                    <span className="text-amber-900 font-bold uppercase underline">
-                      [1-Click Rollback Ready]
+                    <span className="text-amber-900 font-bold uppercase">
+                      {run.pullRequestUrl && run.pullRequestNumber && run.pushedCommitSha ? '[Undo available after GitHub confirmation]' : '[Review only]'}
                     </span>
                   </div>
                 </div>
@@ -200,7 +201,7 @@ export const EmailReportModal: React.FC<EmailReportModalProps> = ({
 
             {/* Email Footer */}
             <div className="mt-6 pt-4 border-t-2 border-black text-center text-[10px] font-sans text-[#121212]/70 uppercase tracking-wider">
-              <p>This automated report was generated by your D-Bugger GitHub MCP Daemon with OpenRouter High-Context Intelligence.</p>
+              <p>This report contains stored D-Bugger run data. It does not imply hidden model reasoning, test execution, legal clearance, or GitHub mutation.</p>
               <p className="mt-1">To change email digest frequency or toggle repositories, open your D-Bugger dashboard.</p>
             </div>
 

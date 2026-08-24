@@ -152,52 +152,52 @@ export class DaemonService {
     const branchName = `dbugger/fix-${Date.now().toString(36)}`;
     const fixId = `fix-${Date.now()}`;
 
-    // Generate step-by-step agent trace
+    // Evidence-based agent trace. Each stage begins pending and is updated only after the corresponding operation returns.
     const agentSteps: AgentStepTrace[] = [
       {
         id: `step-1-${fixId}`,
         phase: 'ast_ingestion',
-        label: 'AST Parsing & AST Call Graph Ingestion',
-        status: 'completed',
+        label: 'Repository Evidence Intake',
+        status: repositorySnapshot || originalCode ? 'completed' : 'failed',
         timestamp: Date.now() - 1400,
-        detail: `Ingested ${activeScenario.file}. Parsed Abstract Syntax Tree and symbol references without syntax defects. Automatic Gridscape research mode: ${researchResult?.mode || 'local-context-fallback'}.`,
-        durationMs: 120
+        detail: repositorySnapshot ? `Loaded ${repositorySnapshot.files?.length || 0} changed file(s) from commit ${repositorySnapshot.commitSha}. No AST result is claimed until an actual parser or model response provides it.` : 'No live repository snapshot was available for this run.',
+        durationMs: 0
       },
       {
         id: `step-2-${fixId}`,
         phase: 'cve_analysis',
-        label: 'Vulnerability Analysis & Fault Localization',
-        status: 'completed',
+        label: 'AI Diagnosis & Fault Localization',
+        status: 'pending',
         timestamp: Date.now() - 1000,
-        detail: `Identified ${activeScenario.category.toUpperCase()} (${activeScenario.severity.toUpperCase()}). ${activeScenario.bugExplanation}`,
-        durationMs: 280
+        detail: `Waiting for ${repo.openRouterModel} to analyze the supplied source and Gridscape context.`,
+        durationMs: 0
       },
       {
         id: `step-3-${fixId}`,
         phase: 'patch_synthesis',
-        label: 'Agentic Defensive Patch Synthesis',
-        status: 'completed',
+        label: 'Patch Proposal',
+        status: 'pending',
         timestamp: Date.now() - 600,
-        detail: `Synthesized minimal AST-preserving patch using ${repo.openRouterModel}, guided by the live repository snapshot and automatic Gridscape research.`,
-        durationMs: 340
+        detail: 'No patch is considered generated until the repair endpoint returns corrected code.',
+        durationMs: 0
       },
       {
         id: `step-4-${fixId}`,
         phase: 'security_pipeline',
-        label: '5-Stage Secure Code Review Pipeline Gate',
-        status: 'completed',
+        label: 'Validation Evidence',
+        status: 'pending',
         timestamp: Date.now() - 300,
-        detail: `Verified AST syntax, SAST CVE scan (0 vulns), unit tests (100% pass), and backward compatibility.`,
-        durationMs: 410
+        detail: 'Repository tests and CI results are not executed by the browser client; no passing tests are claimed here.',
+        durationMs: 0
       },
       {
         id: `step-5-${fixId}`,
         phase: 'mcp_delivery',
-        label: 'GitHub MCP Branch & Pull Request Delivery',
-        status: 'completed',
+        label: 'Verified GitHub Delivery',
+        status: 'pending',
         timestamp: Date.now() - 50,
-        detail: `Created branch ${branchName} and opened Pull Request with verified fix.`,
-        durationMs: 190
+        detail: 'No branch, commit, or pull request is claimed until GitHub returns verified mutation results.',
+        durationMs: 0
       }
     ];
 
@@ -225,105 +225,103 @@ export class DaemonService {
       console.warn('Server AI API error, constructing fallback run:', e);
     }
 
-    // Generate cognitive thought stream steps for AI reasoning modal
+    const modelResponseReceived = Boolean(aiResponse?.success && aiResponse?.data && aiResponse?.mode !== 'deterministic-safe-fallback');
+    // Transparent activity summary for the AI Thoughts modal; this is a summary, not hidden chain-of-thought.
     const thoughtStream: AgentThoughtStep[] = [
       {
         id: `thought-1-${fixId}`,
         phase: 'ast_ingestion',
         timestamp: Date.now() - 1800,
-        title: 'AST Ingestion & Symbol Tree Parse',
-        thought: `Examining AST in ${activeScenario.file}. Discovered 28 AST expressions and detected invariant boundary breach at callsite. Gridscape research was gathered automatically before patch synthesis.`,
-        confidence: 99,
-        astNodeInvestigated: `ExpressionStatement[Callee="${activeScenario.category}"]`,
-        codeInspection: originalCode.slice(0, 120),
-        verdict: 'passed'
+        title: 'Repository Evidence Intake',
+        thought: repositorySnapshot ? `Loaded changed source from commit ${repositorySnapshot.commitSha} for ${repositorySnapshot.files?.length || 0} file(s).` : 'No live repository snapshot was available; source evidence is limited to the supplied run context.',
+        confidence: 0,
+        codeInspection: originalCode.slice(0, 700),
+        verdict: repositorySnapshot ? 'passed' : 'warning'
       },
       {
         id: `thought-2-${fixId}`,
         phase: 'root_cause_deduction',
         timestamp: Date.now() - 1300,
-        title: 'Defect Analysis & Root Cause Deduction',
-        thought: `Identified ${activeScenario.category} (${activeScenario.severity.toUpperCase()}). ${activeScenario.bugExplanation}. Target: Synthesize defensive type guard.`,
-        confidence: 97,
-        astNodeInvestigated: 'BinaryExpression / UnhandledNullCheck',
-        codeInspection: activeScenario.bugExplanation,
-        verdict: 'passed'
+        title: 'AI Diagnosis Status',
+        thought: 'Waiting for the repair endpoint to return a model response. No diagnosis is inferred from the UI state alone.',
+        confidence: 0,
+        codeInspection: originalCode.slice(0, 700),
+        verdict: 'warning'
       },
       {
         id: `thought-3-${fixId}`,
         phase: 'patch_synthesis',
         timestamp: Date.now() - 900,
-        title: 'Defensive Non-Breaking Patch Synthesis',
-        thought: `Synthesized safe AST patch preserving API signatures using ${repo.openRouterModel}, guided by automatic Gridscape repository research. Verified zero side-effects.`,
-        confidence: 98,
-        codeInspection: activeScenario.suggestedFix.slice(0, 150),
-        verdict: 'success'
+        title: 'Patch Proposal Status',
+        thought: 'No corrected code is claimed until the repair endpoint returns it.',
+        confidence: 0,
+        codeInspection: '',
+        verdict: 'warning'
       },
       {
         id: `thought-4-${fixId}`,
         phase: 'legal_risk_audit',
         timestamp: Date.now() - 500,
-        title: 'Legal, Licensing & IP Compliance Gate',
-        thought: `Audited generated code against GPL/AGPL viral contamination and copyright integrity. MIT/Apache-2.0 clean.`,
-        confidence: 100,
-        astNodeInvestigated: 'LicensePolicyValidator[Permissive]',
-        verdict: 'passed'
+        title: 'Validation Evidence',
+        thought: 'No local test runner or CI result was executed by this browser run. Inspect repository CI before merging.',
+        confidence: 0,
+        verdict: 'warning'
       },
       {
         id: `thought-5-${fixId}`,
         phase: 'mcp_delivery',
         timestamp: Date.now() - 200,
-        title: 'GitHub MCP Branch & Pull Request Delivery',
-        thought: `Synthesized branch ${branchName}, ran 6-stage CI verification, and drafted pull request #${Date.now() % 1000}.`,
-        confidence: 99,
-        verdict: 'success'
+        title: 'GitHub Delivery Status',
+        thought: 'No branch, commit, or pull request is claimed until GitHub returns a verified mutation result.',
+        confidence: 0,
+        verdict: 'warning'
       }
     ];
 
     const legalRiskCheck: LegalRiskAudit = {
-      status: 'passed',
-      score: 100,
+      status: 'warning',
+      score: 0,
       licenseContamination: {
-        status: 'passed',
-        detectedLicenses: ['MIT', 'Apache-2.0'],
+        status: 'warning',
+        detectedLicenses: [],
         viralRisk: false,
-        detail: 'Zero GPL, AGPL or copyleft contamination detected in generated patch diff.'
+        detail: 'No independent license scan was executed in the browser run.'
       },
       secretLeakGuard: {
-        status: 'passed',
+        status: 'failed',
         secretsFound: [],
-        detail: 'No hardcoded private keys, JWTs, or passwords detected in commit diff.'
+        detail: 'No independent secret scan was executed in the browser run.'
       },
       copyrightIntegrity: {
-        status: 'passed',
+        status: 'warning',
         uncreditedCopyDetected: false,
-        detail: 'Code is synthesized defensively and is free of uncredited proprietary snippets.'
+        detail: 'No independent copyright-integrity scan was executed in the browser run.'
       },
-      complianceFrameworks: ['SOC2 Type II', 'OWASP ASVS Level 2', 'GDPR Article 32'],
-      legalSignoffSummary: 'Fully cleared for enterprise deployment under permissive licensing policies.'
+      complianceFrameworks: [],
+      legalSignoffSummary: 'Not independently verified; human or CI review is required before merge.'
     };
 
     const aiData = aiResponse?.data || {
-      bugTitle: activeScenario.title,
-      bugCategory: activeScenario.category,
-      bugSeverity: activeScenario.severity,
+      bugTitle: 'AI analysis unavailable',
+      bugCategory: 'other' as const,
+      bugSeverity: 'low' as const,
       affectedFiles: [activeScenario.file],
-      aiReasoning: activeScenario.bugExplanation,
-      fixedCodeSnippet: activeScenario.suggestedFix,
-      patchDiff: `@@ -1,5 +1,8 @@\n- ${originalCode.split('\n')[0]}\n+ ${activeScenario.suggestedFix.split('\n')[0]}`,
+      aiReasoning: 'No model response was returned. No diagnosis or patch is claimed.',
+      fixedCodeSnippet: '',
+      patchDiff: `No patch generated for ${activeScenario.file}; inspect the repository and retry with a configured model key.`,
       pipeline: {
-        passed: true,
-        overallScore: 96,
-        astSyntaxCheck: { status: 'passed', message: 'AST parsed cleanly with zero syntax errors', score: 98 },
-        securityVulnerabilityScan: { status: 'passed', vulnerabilitiesFound: [], score: 97 },
-        unitTestVerification: { status: 'passed', testsRun: 8, testsPassed: 8, score: 95 },
-        dependencyCheck: { status: 'passed', dependenciesAudited: 14, score: 99 },
-        breakingChangeCheck: { status: 'passed', apiContractsPreserved: true, score: 99 },
-        regressionGuard: { status: 'passed', confidence: 97 },
-        legalRiskCheck: legalRiskCheck
+        passed: false,
+        overallScore: 0,
+        astSyntaxCheck: { status: 'warning' as const, message: 'No independent AST parser result was returned.', score: 0 },
+        securityVulnerabilityScan: { status: 'warning' as const, vulnerabilitiesFound: [], score: 0 },
+        unitTestVerification: { status: 'warning' as const, testsRun: 0, testsPassed: 0, score: 0 },
+        dependencyCheck: { status: 'warning' as const, dependenciesAudited: 0, score: 0 },
+        breakingChangeCheck: { status: 'warning' as const, apiContractsPreserved: false, score: 0 },
+        regressionGuard: { status: 'warning' as const, confidence: 0 },
+        legalRiskCheck
       },
-      pullRequestTitle: `fix(dbugger): resolve ${activeScenario.category.replace('_', ' ')} in ${activeScenario.file}`,
-      pullRequestBody: `### Autonomous Code Fix by D-Bugger AI\n\n- **Model:** ${repo.openRouterModel}\n- **Category:** \`${activeScenario.category}\`\n- **Pipeline Score:** 96/100 (Certified Safe)\n- **Legal Clearance:** Verified 0 Copyleft Risks (MIT Clean)\n- **Rollback Option:** Available via 1-click in D-Bugger Dashboard.`
+      pullRequestTitle: '',
+      pullRequestBody: ''
     };
 
     if (!aiData.pipeline.legalRiskCheck) {
@@ -332,12 +330,16 @@ export class DaemonService {
     const modelReasoningSummary = typeof aiData.aiReasoning === 'string' && aiData.aiReasoning.trim()
       ? aiData.aiReasoning.trim().slice(0, 2400)
       : 'No model reasoning summary was returned; the deterministic diagnostic result is shown for review.';
+    agentSteps[1].status = modelResponseReceived ? 'completed' : 'failed';
     agentSteps[1].detail = `${modelReasoningSummary} Evidence file: ${activeScenario.file}.`;
+    agentSteps[2].status = aiData.fixedCodeSnippet ? 'completed' : 'failed';
     agentSteps[2].detail = `${aiData.fixedCodeSnippet ? 'A corrected code result was returned.' : 'No corrected code was returned.'} The repair decision is based on the supplied repository snapshot and Gridscape research.`;
+    agentSteps[3].status = aiData.pipeline?.passed ? 'completed' : 'failed';
+    agentSteps[3].detail = aiData.pipeline?.passed ? 'The returned pipeline gate passed its reported checks; external CI evidence is still required before merge.' : 'The returned pipeline gate did not pass; no GitHub delivery will be attempted.';
     thoughtStream[1].thought = modelReasoningSummary;
     thoughtStream[1].codeInspection = originalCode.slice(0, 700);
     thoughtStream[1].confidence = aiResponse?.data ? 0 : 0;
-    thoughtStream[1].verdict = aiResponse?.data ? 'passed' : 'warning';
+    thoughtStream[1].verdict = modelResponseReceived ? 'passed' : 'warning';
     thoughtStream[2].thought = aiData.fixedCodeSnippet ? `Returned corrected code for ${activeScenario.file}. The result is shown for review before any GitHub mutation.` : `No corrected code was returned for ${activeScenario.file}; no GitHub mutation will be attempted.`;
     thoughtStream[2].codeInspection = (aiData.fixedCodeSnippet || '').slice(0, 700);
 
@@ -353,7 +355,7 @@ export class DaemonService {
       tool: 'ai_analysis',
       timestamp: Date.now(),
       input: { model: repo.openRouterModel, file: activeScenario.file, source: repositorySnapshot ? 'live-github-snapshot' : 'sandbox-or-local-context' },
-      output: { responseReceived: Boolean(aiResponse?.data), reasoningSummary: modelReasoningSummary.slice(0, 900), correctedCodeReturned: Boolean(aiData.fixedCodeSnippet) },
+      output: { responseReceived: modelResponseReceived, mode: aiResponse?.mode || 'unknown', reasoningSummary: modelReasoningSummary.slice(0, 900), correctedCodeReturned: Boolean(aiData.fixedCodeSnippet) },
     });
 
     let pushedSha: string | undefined;
@@ -514,7 +516,7 @@ export class DaemonService {
           bugCategory: fix.bugCategory,
           severity: fix.bugSeverity,
           prUrl: fix.pullRequestUrl,
-          score: fix.pipeline?.overallScore || 96,
+          score: fix.pipeline?.overallScore ?? 0,
           actionType: isRollback ? 'rollback' : 'fix_applied'
         })
       });
@@ -545,39 +547,27 @@ export class DaemonService {
     }
   }
 
-  // Undo an automated bug fix
+  // Undo a verified automated GitHub fix by closing its PR and deleting the D-Bugger branch.
   static async undoFix(fix: BugFixRun, reason: string = 'User requested 1-click rollback') {
     try {
-      // Call server MCP tool revert
-      const response = await fetch('/api/mcp/execute', {
+      const token = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
+      if (!token || !fix.pushedCommitSha || !fix.pullRequestUrl || !fix.branchName || fix.branchName === 'not-created') return false;
+      const [owner, repo] = fix.repoName.split('/');
+      const response = await fetch('/api/github/undo-fix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toolName: 'revert_commit',
-          parameters: {
-            owner: fix.repoName.split('/')[0],
-            repo: fix.repoName.split('/')[1] || fix.repoName,
-            commitSha: fix.pushedCommitSha || fix.commitSha,
-            reason,
-          }
-        })
+        body: JSON.stringify({ owner, repo: repo || fix.repoName, branch: fix.branchName, pullRequestNumber: fix.pullRequestNumber, token, reason }),
       });
-      const data = await response.json();
-      const revertPrUrl = data?.result?.revertPrUrl || `${fix.pullRequestUrl?.replace(/\/pull\/\d+/, '')}/pull/${Math.floor(Math.random() * 50) + 300}`;
-
-      // Update Firestore document
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.undone !== true) throw new Error(data.error || `GitHub undo failed (${response.status})`);
       const updatedRun: Partial<BugFixRun> = {
         status: 'undone',
         isUndone: true,
         canUndo: false,
         undoneAt: Date.now(),
         undoReason: reason,
-        revertPrUrl
       };
-
       await updateDoc(doc(db, 'bug_fix_runs', fix.id), updatedRun);
-
-      // Create undo snapshot log
       await setDoc(doc(db, 'undo_snapshots', `undo-${fix.id}`), {
         id: `undo-${fix.id}`,
         fixId: fix.id,
@@ -587,31 +577,18 @@ export class DaemonService {
         prNumber: fix.pullRequestNumber,
         branchName: fix.branchName,
         revertDiff: fix.patchDiff,
-        revertPrUrl,
-        manualCommands: fix.manualRevertCommands || [
-          `git revert ${fix.pushedCommitSha || fix.commitSha} --no-edit`,
-          `git push origin main`
-        ],
+        manualCommands: fix.manualRevertCommands || [],
         status: 'reverted',
         createdAt: Date.now(),
         revertedAt: Date.now(),
-        reason
+        reason,
       });
-
-      // Dispatch Slack notification about rollback
       const slackUrl = localStorage.getItem('dbugger_slack_webhook');
-      if (slackUrl) {
-        this.sendSlackAlert(fix, slackUrl, true);
-      }
-
-      this.triggerBrowserNotification(
-        `D-Bugger: Fix Rolled Back`,
-        `Successfully reverted patch for ${fix.repoName} ("${fix.bugTitle}"). Revert PR generated.`
-      );
-
+      if (slackUrl) void this.sendSlackAlert(fix, slackUrl, true);
+      this.triggerBrowserNotification('D-Bugger: Fix Undone', `Closed Pull Request #${fix.pullRequestNumber} and deleted branch ${fix.branchName} on ${fix.repoName}.`);
       return true;
     } catch (e) {
-      console.warn('Error reverting fix:', e);
+      console.warn('Real GitHub undo failed:', e);
       return false;
     }
   }

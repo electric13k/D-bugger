@@ -34,10 +34,69 @@ async function request(path: string, init?: RequestInit) {
   return payload;
 }
 
+function hasVerifiedDeliveryEvidence(run: any) {
+  return Boolean(
+    run?.pullRequestUrl &&
+    run?.pullRequestNumber &&
+    run?.pushedCommitSha &&
+    Array.isArray(run?.mcpToolLogs) &&
+    run.mcpToolLogs.some((log: any) =>
+      ['create_branch', 'commit_file', 'create_pull_request'].includes(log?.tool) && log?.output?.verified === true
+    )
+  );
+}
+
+function normalizeLegacyRun(run: BugFixRun): BugFixRun {
+  const verifiedDelivery = hasVerifiedDeliveryEvidence(run);
+  const validationEvidence = Array.isArray(run.mcpToolLogs) && run.mcpToolLogs.some((log: any) =>
+    ['validation', 'test_run', 'ci_result'].includes(log?.tool) && log?.output?.verified === true
+  );
+  const existingPipeline: any = run.pipeline || {};
+  if (verifiedDelivery) {
+    return {
+      ...run,
+      pipeline: validationEvidence ? { ...existingPipeline, passed: false } : { ...existingPipeline, passed: false, overallScore: 0 },
+      canUndo: Boolean(run.canUndo),
+    } as BugFixRun;
+  }
+  const legalRiskCheck = existingPipeline.legalRiskCheck || {};
+  return {
+    ...run,
+    status: verifiedDelivery ? 'awaiting_human_review' : (run.isUndone || run.status === 'undone' ? 'awaiting_human_review' : run.status),
+    pullRequestUrl: verifiedDelivery ? run.pullRequestUrl : undefined,
+    pullRequestNumber: verifiedDelivery ? run.pullRequestNumber : undefined,
+    pushedCommitSha: verifiedDelivery ? run.pushedCommitSha : undefined,
+    revertPrUrl: undefined,
+    isUndone: verifiedDelivery ? run.isUndone : undefined,
+    canUndo: verifiedDelivery ? Boolean(run.canUndo) : false,
+    pipeline: {
+      ...existingPipeline,
+      passed: false,
+      overallScore: validationEvidence ? (typeof existingPipeline.overallScore === 'number' ? existingPipeline.overallScore : 0) : 0,
+      astSyntaxCheck: validationEvidence ? existingPipeline.astSyntaxCheck : { status: 'warning', message: 'No independent AST/type-check evidence was stored.', score: 0 },
+      securityVulnerabilityScan: validationEvidence ? existingPipeline.securityVulnerabilityScan : { status: 'warning', vulnerabilitiesFound: [], score: 0 },
+      legalRiskCheck: validationEvidence ? legalRiskCheck : {
+        status: 'warning',
+        score: 0,
+        licenseContamination: { status: 'warning', detectedLicenses: [], viralRisk: false, detail: 'No independent license scan evidence was stored.' },
+        secretLeakGuard: { status: 'failed', secretsFound: [], detail: 'No independent secret scan evidence was stored.' },
+        copyrightIntegrity: { status: 'warning', uncreditedCopyDetected: false, detail: 'No independent copyright scan evidence was stored.' },
+        complianceFrameworks: [],
+        legalSignoffSummary: 'Not independently verified; human or CI review is required.',
+      },
+      unitTestVerification: validationEvidence ? existingPipeline.unitTestVerification : { status: 'warning', testsRun: 0, testsPassed: 0, score: 0 },
+      dependencyCheck: validationEvidence ? existingPipeline.dependencyCheck : { status: 'warning', dependenciesAudited: 0, score: 0 },
+      breakingChangeCheck: validationEvidence ? existingPipeline.breakingChangeCheck : { status: 'warning', apiContractsPreserved: false, score: 0 },
+      regressionGuard: validationEvidence ? existingPipeline.regressionGuard : { status: 'warning', confidence: 0 },
+    },
+  } as BugFixRun;
+}
+
 export async function loadCloudflareWorkspace(): Promise<WorkspaceState | null> {
   try {
     const payload = await request('/api/workspace/state');
-    return payload?.state || null;
+    const state = payload?.state as WorkspaceState | undefined;
+    return state ? { ...state, fixRuns: Array.isArray(state.fixRuns) ? state.fixRuns.map(normalizeLegacyRun) : [] } : null;
   } catch (error) {
     console.warn('Cloudflare workspace unavailable; using local/Firebase fallback.', error);
     return null;

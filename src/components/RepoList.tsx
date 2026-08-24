@@ -60,11 +60,11 @@ export const RepoList: React.FC<RepoListProps> = ({
               Monitored GitHub Repositories
             </span>
             <span className="border border-black bg-[#F9F7F2] px-2 py-0.5 text-[9px] font-mono font-bold uppercase">
-              MCP Auto-Hooks &bull; Push Sweep
+              GitHub Context &bull; Push Sweep
             </span>
           </div>
           <p className="text-xs font-sans text-[#121212]/70 mt-1">
-            The background daemon watches commit hooks, analyzes incoming changes with high-context models, and crafts PRs.
+            D-Bugger reads connected repository commits, gathers Gridscape context, and produces a reviewable diagnosis. GitHub mutation requires verified evidence and authorization.
           </p>
         </div>
 
@@ -88,7 +88,7 @@ export const RepoList: React.FC<RepoListProps> = ({
             No Repositories Connected to D-Bugger Yet
           </h3>
           <p className="text-xs text-[#121212]/70 max-w-md mx-auto mt-2 leading-relaxed">
-            Connect any public or private GitHub repository to activate autonomous Git commit watching, high-context AST reasoning, legal IP compliance checks, and self-healing PR creation.
+            Connect a public or private GitHub repository to read its current source, refresh context.md, gather Gridscape research, and produce a reviewable code proposal. Tests and GitHub delivery are never assumed.
           </p>
           <div className="mt-5">
             <button
@@ -206,7 +206,7 @@ export const RepoList: React.FC<RepoListProps> = ({
                       </select>
                     </div>
 
-                    {/* Action Mode Toggle: PR Only vs PR + Auto-Push */}
+                    {/* Action Mode Toggle: review-only delivery preferences */}
                     <div>
                       <label className="text-[11px] font-sans font-bold uppercase tracking-wider text-[#121212]/80 flex items-center gap-1">
                         <GitPullRequest className="h-3 w-3 text-black" />
@@ -222,7 +222,7 @@ export const RepoList: React.FC<RepoListProps> = ({
                               : 'bg-white text-[#121212] hover:bg-[#F9F7F2]'
                           }`}
                         >
-                          PR Only
+                          PR Review
                         </button>
                         <button
                           type="button"
@@ -233,7 +233,7 @@ export const RepoList: React.FC<RepoListProps> = ({
                               : 'bg-white text-[#121212] hover:bg-[#F9F7F2]'
                           }`}
                         >
-                          PR + Auto-Push
+                          PR Review + Delivery
                         </button>
                       </div>
                     </div>
@@ -255,7 +255,7 @@ export const RepoList: React.FC<RepoListProps> = ({
                 {/* Bottom Actions & Stats */}
                 <div className="mt-4 pt-3 border-t-2 border-black flex items-center justify-between">
                   <div className="text-[11px] font-mono text-[#121212]/70">
-                    <span className="font-bold text-[#121212]">{repo.totalFixes || 0}</span> patches applied
+                    <span className="font-bold text-[#121212]">{repo.totalFixes || 0}</span> recorded runs
                   </div>
 
                   <div className="flex items-center gap-1.5">
@@ -265,7 +265,7 @@ export const RepoList: React.FC<RepoListProps> = ({
                       className="flex items-center gap-1 border border-black bg-white px-3 py-1 text-xs font-sans font-bold uppercase text-[#121212] hover:bg-[#F9F7F2] shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] transition-all disabled:opacity-50"
                     >
                       <Play className={`h-3 w-3 ${isScanning ? 'animate-spin' : ''}`} />
-                      {isScanning ? 'Healing...' : 'Sweep Now'}
+                      {isScanning ? 'Scanning...' : 'Sweep Now'}
                     </button>
                   </div>
                 </div>

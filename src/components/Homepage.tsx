@@ -159,7 +159,10 @@ export const Homepage: React.FC<HomepageProps> = ({
   };
 
   const demoReposCount = repos.filter(r => r.isMockDemo).length;
-  const activeFixesCount = fixRuns.filter(r => !r.isUndone).length;
+  const verifiedDeliveryRuns = fixRuns.filter(r => r.pullRequestUrl && r.pullRequestNumber && r.pushedCommitSha);
+  const activeFixesCount = verifiedDeliveryRuns.filter(r => !r.isUndone).length;
+  const scoredRuns = fixRuns.filter(r => typeof r.pipeline?.overallScore === 'number' && r.pipeline.overallScore > 0);
+  const recordedReviewRate = scoredRuns.length ? `${Math.round(scoredRuns.reduce((sum, r) => sum + (r.pipeline?.overallScore ?? 0), 0) / scoredRuns.length)}%` : '—';
 
   return (
     <div className="space-y-8 font-sans text-[#121212]">
@@ -236,7 +239,7 @@ export const Homepage: React.FC<HomepageProps> = ({
                 <span className="text-[#121212]/70">Daemon State:</span>
                 <span className="inline-flex items-center gap-1 font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 border border-emerald-300">
                   <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
-                  ACTIVE 24/7
+                  {githubToken ? 'READY' : 'CREDENTIALS NEEDED'}
                 </span>
               </div>
 
@@ -246,13 +249,13 @@ export const Homepage: React.FC<HomepageProps> = ({
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[#121212]/70">Patches Deployed:</span>
-                <span className="font-mono font-bold text-black bg-neutral-100 px-2 py-0.5 border border-black">{fixRuns.length}</span>
+                <span className="text-[#121212]/70">Verified PRs:</span>
+                <span className="font-mono font-bold text-black bg-neutral-100 px-2 py-0.5 border border-black">{verifiedDeliveryRuns.length}</span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-[#121212]/70">Review Pass Rate:</span>
-                <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 border border-emerald-300">96.8%</span>
+                <span className="text-[#121212]/70">Recorded Score:</span>
+                <span className="font-mono font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 border border-emerald-300">{recordedReviewRate}</span>
               </div>
             </div>
 

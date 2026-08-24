@@ -46,7 +46,7 @@ export const FixRunsList: React.FC<FixRunsListProps> = ({
           No automated bug fixes recorded yet
         </h3>
         <p className="text-xs font-sans text-[#121212]/70 mt-1 max-w-sm mx-auto">
-          The daemon is actively watching your configured repositories. Click &quot;Inject Bug&quot; or &quot;Sweep Now&quot; to test the automated pipeline!
+          Connect a repository and run a scan to create an evidence-backed diagnosis. No repair, test, commit, or pull request is implied until it is returned by the connected services.
         </p>
       </div>
     );
@@ -62,11 +62,11 @@ export const FixRunsList: React.FC<FixRunsListProps> = ({
             </span>
           </div>
           <p className="text-xs font-sans text-[#121212]/70 mt-1">
-            Every fix undergoes autonomous 5-stage AST &amp; CVE verification, PR generation, email notification, and supports instant 1-click undo.
+            Run history separates repository evidence, diagnostic proposals, validation results, and verified GitHub delivery. Historical records without delivery evidence remain review-only.
           </p>
         </div>
         <span className="text-xs font-mono uppercase font-bold text-[#121212] bg-[#F9F7F2] px-3 py-1 border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] self-start sm:self-auto">
-          {runs.length} Patches Logged
+          {runs.length} Runs Logged
         </span>
       </div>
 
@@ -91,7 +91,8 @@ export const FixRunsList: React.FC<FixRunsListProps> = ({
           };
 
           const catBadge = getCategoryBadge(run.bugCategory);
-          const score = run.pipeline?.overallScore || 95;
+          const score = run.pipeline?.overallScore ?? 0;
+          const isVerifiedDelivery = Boolean(run.pushedCommitSha && run.pullRequestUrl && run.pullRequestNumber);
 
           return (
             <div
@@ -124,13 +125,17 @@ export const FixRunsList: React.FC<FixRunsListProps> = ({
                       <span className="inline-flex items-center gap-1 text-[10px] font-sans font-bold uppercase text-amber-950 bg-amber-200 px-2 py-0.5 border border-black">
                         <RotateCcw className="h-3 w-3" /> Undone (Rolled Back)
                       </span>
-                    ) : run.status === 'pushed' ? (
+                    ) : isVerifiedDelivery ? (
                       <span className="inline-flex items-center gap-1 text-[10px] font-sans font-bold uppercase text-emerald-950 bg-emerald-200 px-2 py-0.5 border border-black">
-                        <CheckCircle2 className="h-3 w-3" /> Pushed &amp; Merged
+                        <CheckCircle2 className="h-3 w-3" /> Verified PR Delivered
+                      </span>
+                    ) : run.status === 'awaiting_human_review' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-sans font-bold uppercase text-amber-950 bg-amber-200 px-2 py-0.5 border border-black">
+                        <AlertTriangle className="h-3 w-3" /> Review Required
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-sans font-bold uppercase text-cyan-950 bg-cyan-200 px-2 py-0.5 border border-black">
-                        <GitPullRequest className="h-3 w-3" /> Pull Request Open
+                      <span className="inline-flex items-center gap-1 text-[10px] font-sans font-bold uppercase text-cyan-950 bg-cyan-100 px-2 py-0.5 border border-black">
+                        <HelpCircle className="h-3 w-3" /> Diagnosis / Proposal Only
                       </span>
                     )}
                   </div>
@@ -209,8 +214,8 @@ export const FixRunsList: React.FC<FixRunsListProps> = ({
                       </button>
                     )}
 
-                    {/* Pull Request Link */}
-                    {run.pullRequestUrl && (
+                    {/* Verified Pull Request Link */}
+                    {run.pullRequestUrl && run.pullRequestNumber && (
                       <a
                         href={run.pullRequestUrl}
                         target="_blank"
@@ -218,18 +223,18 @@ export const FixRunsList: React.FC<FixRunsListProps> = ({
                         className="flex items-center justify-center gap-1 border border-black bg-white px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider text-[#121212] hover:bg-[#F9F7F2] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all"
                       >
                         <GitPullRequest className="h-3.5 w-3.5" />
-                        PR #{run.pullRequestNumber || 'PR'}
+                        Verified PR #{run.pullRequestNumber}
                         <ArrowUpRight className="h-3 w-3" />
                       </a>
                     )}
 
                     {/* 1-Click Undo Button */}
-                    {!isUndone && (
+                    {run.pushedCommitSha && run.pullRequestUrl && !isUndone && (
                       <button
                         onClick={() => onUndoFix(run)}
                         disabled={isUndoing}
                         className="flex items-center justify-center gap-1 border border-black bg-amber-200 px-3 py-1.5 text-xs font-sans font-bold uppercase tracking-wider text-amber-950 hover:bg-amber-300 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] transition-all disabled:opacity-50"
-                        title="Revert this automated commit & PR"
+                        title="Close the verified pull request and delete its D-Bugger branch"
                       >
                         <RotateCcw className={`h-3.5 w-3.5 ${isUndoing ? 'animate-spin' : ''}`} />
                         {isUndoing ? 'Reverting...' : 'Undo Fix'}
