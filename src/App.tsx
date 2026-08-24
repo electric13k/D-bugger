@@ -57,46 +57,10 @@ export default function App() {
   const [apiKeyPromptOpen, setApiKeyPromptOpen] = useState(false);
 
   // In-App Notifications
-  const [notifications, setNotifications] = useState<InAppNotification[]>([
-    {
-      id: 'notif-1',
-      title: 'GitHub Watch Ready',
-      message: 'Live repository polling begins after a repository and GitHub token are configured.',
-      timestamp: Date.now() - 1000 * 60 * 5,
-      type: 'info',
-      read: false
-    },
-    {
-      id: 'notif-2',
-      title: 'Evidence Checks Awaiting a Run',
-      message: 'No test, legal, security, or delivery result is assumed until a connected service returns evidence.',
-      timestamp: Date.now() - 1000 * 60 * 2,
-      type: 'security_gate',
-      read: false
-    }
-  ]);
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
 
   // Terminal Logs state
-  const [logs, setLogs] = useState<DaemonLog[]>([
-    {
-      id: 'log-1',
-      timestamp: Date.now() - 1000 * 60 * 12,
-      level: 'info',
-      message: 'Background polling is ready; no repository is analyzed until a live connection is configured.',
-    },
-    {
-      id: 'log-2',
-      timestamp: Date.now() - 1000 * 60 * 8,
-      level: 'mcp',
-      message: 'GitHub integration is idle until a session-only token and a live repository are configured.',
-    },
-    {
-      id: 'log-3',
-      timestamp: Date.now() - 1000 * 60 * 4,
-      level: 'ai',
-      message: 'AI analysis is unavailable until the user supplies a session-only OpenRouter key.',
-    }
-  ]);
+  const [logs, setLogs] = useState<DaemonLog[]>([]);
 
   // Modals state
   const [diffModalRun, setDiffModalRun] = useState<BugFixRun | null>(null);

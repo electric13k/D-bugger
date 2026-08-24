@@ -47,8 +47,13 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
   const [isSaved, setIsSaved] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotificationPermission(Notification.permission);
+    if (typeof window !== 'undefined' && isOpen) {
+      setOpenRouterKey(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key') || '');
+      const storedModel = sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || '';
+      setSelectedModel(OPENROUTER_MODELS.some((model) => model.id === storedModel) ? storedModel : (OPENROUTER_MODELS[0]?.id || ''));
+      setGithubToken(sessionStorage.getItem('dbugger_github_token') || localStorage.getItem('repoheal_github_token') || '');
+      setSlackWebhook(localStorage.getItem('dbugger_slack_webhook') || '');
+      if ('Notification' in window) setNotificationPermission(Notification.permission);
     }
   }, [isOpen]);
 
