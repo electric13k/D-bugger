@@ -22,6 +22,7 @@ import { EmailAuthModal } from './components/EmailAuthModal';
 import { GridscapeResearchModal } from './components/GridscapeResearchModal';
 import { analyzeGitHubRepository, syncRepositoryContext } from './lib/repoContext';
 import { getWorkspaceId, loadCloudflareWorkspace, saveCloudflareWorkspace, recordCloudflareWorkingStyle, readSessionCredential } from './lib/cloudflareWorkspace';
+import { researchBeforeFix } from './lib/autoResearch';
 import { 
   Bot, 
   GitBranch, 
@@ -262,8 +263,11 @@ export default function App() {
     addLog('mcp', `Fetching latest commit tree & diffs for ${repo.name}...`, repo.name);
 
     try {
+      addLog('ai', `Gathering automatic Gridscape research before ${repo.name} analysis...`, repo.name);
+      const researchResult = await researchBeforeFix(repo, { commitMessage: 'automatic repository scan', scenario: 'find broken behavior and safe improvements to functioning code', code: repo.contextAnalysis?.architectureSummary });
+      addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
-      const fixRun = await DaemonService.triggerBugFix(repo);
+      const fixRun = await DaemonService.triggerBugFix(repo, undefined, undefined, undefined, researchResult);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `Autonomous fix ready: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
@@ -308,8 +312,11 @@ export default function App() {
     addLog('warn', `Simulated commit received on ${repo.name}: "${customCommit || 'Commit Bug'}"`, repo.name);
     
     try {
+      addLog('ai', `Gathering automatic Gridscape research before ${repo.name} analysis...`, repo.name);
+      const researchResult = await researchBeforeFix(repo, { commitMessage: customCommit || 'simulated commit bug', scenario: `scenario ${scenarioIndex}`, code: customCode });
+      addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
       addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
-      const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit);
+      const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit, researchResult);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `AI resolved bug: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);

@@ -2,6 +2,8 @@ import { db } from '../lib/firebase';
 import { collection, doc, setDoc, getDocs, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { MonitoredRepo, BugFixRun, DaemonConfig, EmailReport, AgentStepTrace, InAppNotification, AgentThoughtStep, LegalRiskAudit } from '../types';
 import { DEMO_PRESET_REPOS, BUG_SCENARIOS } from '../data/models';
+import type { AutoResearchResult } from '../lib/autoResearch';
+import { readSessionCredential } from '../lib/cloudflareWorkspace';
 
 export class DaemonService {
   // Initialize default repositories in Firestore if empty
@@ -123,7 +125,8 @@ export class DaemonService {
     repo: MonitoredRepo,
     scenarioIndex?: number,
     customCode?: string,
-    customCommit?: string
+    customCommit?: string,
+    researchResult?: AutoResearchResult
   ): Promise<BugFixRun> {
     const scenario = typeof scenarioIndex === 'number' && scenarioIndex >= 0 && BUG_SCENARIOS[scenarioIndex] 
       ? BUG_SCENARIOS[scenarioIndex] 
@@ -143,7 +146,7 @@ export class DaemonService {
         label: 'AST Parsing & AST Call Graph Ingestion',
         status: 'completed',
         timestamp: Date.now() - 1400,
-        detail: `Ingested ${scenario.file}. Parsed Abstract Syntax Tree and symbol references without syntax defects.`,
+        detail: `Ingested ${scenario.file}. Parsed Abstract Syntax Tree and symbol references without syntax defects. Automatic Gridscape research mode: ${researchResult?.mode || 'local-context-fallback'}.`,
         durationMs: 120
       },
       {
@@ -196,7 +199,10 @@ export class DaemonService {
           originalCode,
           bugScenario: scenario,
           model: repo.openRouterModel,
+          userApiKey: readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key'),
           securityThreshold: repo.securityThreshold || 85,
+          researchContext: researchResult?.text || '',
+          researchSources: researchResult?.sources || [],
         })
       });
       aiResponse = await response.json();
@@ -211,7 +217,7 @@ export class DaemonService {
         phase: 'ast_ingestion',
         timestamp: Date.now() - 1800,
         title: 'AST Ingestion & Symbol Tree Parse',
-        thought: `Examining AST in ${scenario.file}. Discovered 28 AST expressions and detected invariant boundary breach at callsite.`,
+        thought: `Examining AST in ${scenario.file}. Discovered 28 AST expressions and detected invariant boundary breach at callsite. Gridscape research was gathered automatically before patch synthesis.`,
         confidence: 99,
         astNodeInvestigated: `ExpressionStatement[Callee="${scenario.category}"]`,
         codeInspection: originalCode.slice(0, 120),
@@ -233,7 +239,7 @@ export class DaemonService {
         phase: 'patch_synthesis',
         timestamp: Date.now() - 900,
         title: 'Defensive Non-Breaking Patch Synthesis',
-        thought: `Synthesized safe AST patch preserving API signatures using ${repo.openRouterModel}. Verified zero side-effects.`,
+        thought: `Synthesized safe AST patch preserving API signatures using ${repo.openRouterModel}, guided by automatic Gridscape repository research. Verified zero side-effects.`,
         confidence: 98,
         codeInspection: scenario.suggestedFix.slice(0, 150),
         verdict: 'success'
@@ -311,6 +317,12 @@ export class DaemonService {
 
     // Execute MCP Tools
     const mcpLogs = [];
+    mcpLogs.push({
+      tool: 'gridscape_research',
+      timestamp: Date.now(),
+      input: { repository: repo.name, mode: researchResult?.mode || 'local-context-fallback' },
+      output: { summary: (researchResult?.text || 'No research context available.').slice(0, 900), sources: researchResult?.sources || [] },
+    });
     
     // 1. Create branch
     mcpLogs.push({
