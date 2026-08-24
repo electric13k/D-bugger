@@ -20,7 +20,7 @@ import { AddRepoModal } from './components/AddRepoModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
 import { EmailAuthModal } from './components/EmailAuthModal';
 import { GridscapeResearchModal } from './components/GridscapeResearchModal';
-import { analyzeGitHubRepository, syncRepositoryContext } from './lib/repoContext';
+import { analyzeGitHubRepository, fetchRepositoryDebugSnapshot, syncRepositoryContext } from './lib/repoContext';
 import { getWorkspaceId, loadCloudflareWorkspace, saveCloudflareWorkspace, recordCloudflareWorkingStyle, readSessionCredential } from './lib/cloudflareWorkspace';
 import { researchBeforeFix } from './lib/autoResearch';
 import { 
@@ -263,11 +263,23 @@ export default function App() {
     addLog('mcp', `Fetching latest commit tree & diffs for ${repo.name}...`, repo.name);
 
     try {
+      const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
+      let repositorySnapshot;
+      if (githubToken && !repo.isMockDemo) {
+        addLog('mcp', `Reading the latest commit and changed source files from ${repo.name}...`, repo.name);
+        try {
+          repositorySnapshot = await fetchRepositoryDebugSnapshot(repo, githubToken);
+          addLog('mcp', `Loaded ${repositorySnapshot.files.length} changed source file(s) from commit ${repositorySnapshot.commitSha.slice(0, 8)} for real debugging.`, repo.name);
+        } catch (error: any) {
+          addLog('warn', `Live repository snapshot unavailable; using indexed context fallback: ${error.message || 'GitHub read failed.'}`, repo.name);
+        }
+      }
+      const sourceCode = repositorySnapshot?.files.map((file) => `// ${file.path}\n${file.content || file.patch}`).join('\n\n').slice(0, 26000);
       addLog('ai', `Gathering automatic Gridscape research before ${repo.name} analysis...`, repo.name);
-      const researchResult = await researchBeforeFix(repo, { commitMessage: 'automatic repository scan', scenario: 'find broken behavior and safe improvements to functioning code', code: repo.contextAnalysis?.architectureSummary });
+      const researchResult = await researchBeforeFix(repo, { commitMessage: repositorySnapshot?.commitMessage || 'automatic repository scan', scenario: 'find broken behavior and safe improvements to functioning code', code: sourceCode || repo.contextAnalysis?.architectureSummary });
       addLog('ai', `Gridscape research ready (${researchResult.mode}); patch synthesis can now use repository context.`, repo.name);
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
-      const fixRun = await DaemonService.triggerBugFix(repo, undefined, undefined, undefined, researchResult);
+      const fixRun = await DaemonService.triggerBugFix(repo, undefined, sourceCode, repositorySnapshot?.commitMessage, researchResult, repositorySnapshot);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
       addLog('success', `Autonomous fix ready: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);

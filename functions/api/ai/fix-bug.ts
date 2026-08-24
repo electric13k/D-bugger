@@ -12,6 +12,7 @@ interface FixBugBody {
   securityThreshold?: unknown;
   researchContext?: unknown;
   researchSources?: unknown;
+  repositorySnapshot?: { commitSha?: unknown; commitMessage?: unknown; files?: Array<{ path?: unknown; patch?: unknown; content?: unknown; language?: unknown }> };
 }
 
 function text(value: unknown, max = 12000) {
@@ -63,6 +64,7 @@ export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) 
     const threshold = typeof body.securityThreshold === 'number' ? body.securityThreshold : 85;
     const researchContext = text(body.researchContext, 14000);
     const researchSources = Array.isArray(body.researchSources) ? body.researchSources.slice(0, 10) : [];
+    const repositoryFiles = Array.isArray(body.repositorySnapshot?.files) ? body.repositorySnapshot.files.slice(0, 8).map((file) => `### ${text(file.path, 240)} (${text(file.language, 40)})\nPatch:\n${text(file.patch, 7000)}\nSource:\n${text(file.content, 14000)}`).join('\n\n') : '';
 
     if (apiKey) {
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -82,7 +84,7 @@ export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) 
             },
             {
               role: 'user',
-              content: `Repository: ${repoName}\nCommit: ${commitMessage}\nCode:\n${originalCode}\nScenario: ${JSON.stringify(body.bugScenario || {})}\nGridscape research context:\n${researchContext || 'No external research was available; use the linked repository context and inspect the code carefully.'}\nResearch sources: ${JSON.stringify(researchSources)}`,
+              content: `Repository: ${repoName}\nCommit: ${commitMessage}\nChanged repository files and patches:\n${repositoryFiles || originalCode}\nScenario: ${JSON.stringify(body.bugScenario || {})}\nGridscape research context:\n${researchContext || 'No external research was available; use the linked repository context and inspect the code carefully.'}\nResearch sources: ${JSON.stringify(researchSources)}\n\nFirst diagnose concrete failures in the changed code. If it is already functioning, identify only high-confidence, low-risk improvements. Return the corrected code and a precise diff for the affected file(s).`,
             },
           ],
           response_format: { type: 'json_object' },
@@ -103,7 +105,7 @@ export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) 
       }
     }
 
-    return Response.json({ success: true, data: fallback(body, model, threshold), mode: 'deterministic-safe-fallback' });
+    return Response.json({ success: true, data: fallback({ ...body, originalCode: repositoryFiles || originalCode }, model, threshold), mode: 'deterministic-safe-fallback' });
   } catch (error) {
     console.error('Automatic D-Bugger fix error:', error);
     return Response.json({ success: false, error: 'Automatic repair could not be completed.' }, { status: 500 });

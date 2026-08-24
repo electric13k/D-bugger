@@ -9,6 +9,38 @@ async function githubJson(url: string, token: string, init?: RequestInit) {
   return data;
 }
 
+export interface RepositoryDebugSnapshot {
+  commitSha: string;
+  commitMessage: string;
+  files: Array<{ path: string; patch: string; content: string; language: string }>;
+}
+
+function decodeGitHubContent(value: string) {
+  const binary = atob(value.replace(/\n/g, ''));
+  return new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
+}
+
+function fileLanguage(path: string) {
+  const extension = path.split('.').pop()?.toLowerCase();
+  return extension === 'ts' || extension === 'tsx' ? 'typescript' : extension === 'js' || extension === 'jsx' ? 'javascript' : extension === 'py' ? 'python' : extension === 'go' ? 'go' : extension === 'rs' ? 'rust' : extension === 'java' ? 'java' : 'text';
+}
+
+export async function fetchRepositoryDebugSnapshot(repo: MonitoredRepo, token: string): Promise<RepositoryDebugSnapshot> {
+  const commit = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/commits/${encodeURIComponent(repo.branch)}`, token);
+  const changedFiles = Array.isArray(commit.files) ? commit.files.filter((file: any) => file?.filename && file.status !== 'removed' && !/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|dist\/|build\/)/i.test(file.filename)).slice(0, 8) : [];
+  const files = await Promise.all(changedFiles.map(async (file: any) => {
+    let content = '';
+    try {
+      const source = await githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/contents/${file.filename}?ref=${encodeURIComponent(commit.sha)}`, token);
+      if (source.encoding === 'base64' && source.content) content = decodeGitHubContent(source.content).slice(0, 16000);
+    } catch {
+      // Keep the commit patch when a changed file cannot be read.
+    }
+    return { path: file.filename as string, patch: String(file.patch || '').slice(0, 8000), content, language: fileLanguage(file.filename) };
+  }));
+  return { commitSha: commit.sha, commitMessage: commit.commit?.message || '', files };
+}
+
 export async function analyzeGitHubRepository(repo: MonitoredRepo, token: string): Promise<{ context: RepoContextAnalysis; commit: any; tree: any[] }> {
   const [tree, commit] = await Promise.all([
     githubJson(`https://api.github.com/repos/${repo.owner}/${repo.repo}/git/trees/${encodeURIComponent(repo.branch)}?recursive=1`, token),
