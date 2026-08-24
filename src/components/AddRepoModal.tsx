@@ -36,6 +36,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [alertEmail, setAlertEmail] = useState(userEmail || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   if (!isOpen) return null;
 
@@ -51,6 +52,7 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
       repo = parts[1].trim();
     }
 
+    setSubmitError('');
     setIsSubmitting(true);
     try {
       await onAddRepo({
@@ -69,6 +71,8 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
         alertEmail,
       });
       onClose();
+    } catch (error: any) {
+      setSubmitError(error?.message || 'Repository connection failed. Check the GitHub token and repository name.');
     } finally {
       setIsSubmitting(false);
     }
@@ -220,6 +224,12 @@ export const AddRepoModal: React.FC<AddRepoModalProps> = ({
               className="w-full border border-black bg-[#F9F7F2] px-3 py-2 text-xs text-[#121212] focus:outline-none font-mono shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
             />
           </div>
+
+          {submitError && (
+            <div role="alert" className="border-2 border-red-800 bg-red-50 p-3 text-xs font-mono text-red-950">
+              {submitError}
+            </div>
+          )}
 
           {/* Submit */}
           <div className="pt-3 border-t-2 border-black flex items-center justify-end gap-2">

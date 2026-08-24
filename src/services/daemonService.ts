@@ -1,5 +1,3 @@
-import { db } from '../lib/firebase';
-import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { MonitoredRepo, BugFixRun, AgentStepTrace, AgentThoughtStep, LegalRiskAudit } from '../types';
 import type { AutoResearchResult } from '../lib/autoResearch';
 import { readSessionCredential } from '../lib/cloudflareWorkspace';
@@ -15,23 +13,13 @@ export class DaemonService {
       lastCheckedAt: Date.now(),
       totalFixes: 0,
     };
-    try {
-      await setDoc(doc(db, 'monitored_repos', id), newRepo);
-    } catch (e) {
-      console.warn('Firestore repository write failed; the Pages workspace persistence will be attempted.', e);
-    }
     return newRepo;
   }
 
   // Delete repository
-  static async deleteRepo(repoId: string) {
-    try {
-      await deleteDoc(doc(db, 'monitored_repos', repoId));
-      return true;
-    } catch (e) {
-      console.warn('Failed to delete repo:', e);
-      return false;
-    }
+  static async deleteRepo(_repoId: string) {
+    // Cloudflare D1 workspace persistence is handled by App.tsx after local state changes.
+    return true;
   }
 
   // Trigger Bug Fix Cycle via AI and MCP
@@ -351,22 +339,6 @@ export class DaemonService {
       manualRevertCommands: manualCommands
     };
 
-    // Save to Firestore
-    try {
-      await setDoc(doc(db, 'bug_fix_runs', fixId), newFixRun);
-      
-      // Update repo counter
-      await updateDoc(doc(db, 'monitored_repos', repo.id), {
-        lastCheckedAt: Date.now(),
-        lastCommitSha: commitSha,
-        lastCommitMessage: commitMsg,
-        totalFixes: (repo.totalFixes || 0) + 1,
-        status: 'monitoring'
-      });
-    } catch (e) {
-      console.warn('Error persisting fix to Firestore:', e);
-    }
-
     // Auto-dispatch Email if enabled
     if (repo.emailAlerts && repo.alertEmail) {
       this.sendEmailNotification(newFixRun, repo.alertEmail);
@@ -464,29 +436,7 @@ export class DaemonService {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.undone !== true) throw new Error(data.error || `GitHub undo failed (${response.status})`);
-      const updatedRun: Partial<BugFixRun> = {
-        status: 'undone',
-        isUndone: true,
-        canUndo: false,
-        undoneAt: Date.now(),
-        undoReason: reason,
-      };
-      await updateDoc(doc(db, 'bug_fix_runs', fix.id), updatedRun);
-      await setDoc(doc(db, 'undo_snapshots', `undo-${fix.id}`), {
-        id: `undo-${fix.id}`,
-        fixId: fix.id,
-        repoName: fix.repoName,
-        originalCommitSha: fix.commitSha,
-        fixCommitSha: fix.pushedCommitSha,
-        prNumber: fix.pullRequestNumber,
-        branchName: fix.branchName,
-        revertDiff: fix.patchDiff,
-        manualCommands: fix.manualRevertCommands || [],
-        status: 'reverted',
-        createdAt: Date.now(),
-        revertedAt: Date.now(),
-        reason,
-      });
+      // Cloudflare D1 persistence is handled by App.tsx after the verified GitHub mutation.
       const slackUrl = localStorage.getItem('dbugger_slack_webhook');
       if (slackUrl) void this.sendSlackAlert(fix, slackUrl, true);
       this.triggerBrowserNotification('D-Bugger: Fix Undone', `Closed Pull Request #${fix.pullRequestNumber} and deleted branch ${fix.branchName} on ${fix.repoName}.`);

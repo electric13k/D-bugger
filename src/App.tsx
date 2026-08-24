@@ -321,7 +321,9 @@ export default function App() {
     try {
       const success = await DaemonService.undoFix(run);
       if (success) {
-        setFixRuns(prev => prev.map(item => item.id === run.id ? { ...item, status: 'undone', isUndone: true, canUndo: false } : item));
+        const nextFixRuns = fixRuns.map(item => item.id === run.id ? { ...item, status: 'undone' as const, isUndone: true, canUndo: false } : item);
+        setFixRuns(nextFixRuns);
+        void saveCloudflareWorkspace({ repos, fixRuns: nextFixRuns, logs, daemonRunning });
         addLog('success', `GitHub undo completed: Pull Request #${run.pullRequestNumber} was closed and branch ${run.branchName} was deleted.`, run.repoName);
         addNotification({
           title: `Verified GitHub Fix Undone`,
@@ -351,7 +353,9 @@ export default function App() {
     const repoName = targetRepo ? targetRepo.name : repoId;
     
     await DaemonService.deleteRepo(repoId);
-    setRepos(prev => prev.filter(r => r.id !== repoId));
+    const nextRepos = repos.filter(r => r.id !== repoId);
+    setRepos(nextRepos);
+    void saveCloudflareWorkspace({ repos: nextRepos, fixRuns, logs, daemonRunning });
     addLog('info', `Disconnected ${repoName} from D-Bugger daemon. GitHub repository untouched.`);
     addNotification({
       title: 'Repository Disconnected',
@@ -366,22 +370,30 @@ export default function App() {
     const created = await DaemonService.addRepo({ ...newRepoData, contextSyncStatus: 'pending' });
     let enriched = created;
     const githubToken = readSessionCredential('dbugger_github_token', 'repoheal_github_token');
-    if (githubToken) {
-      try {
-        setRepos(prev => [{ ...created, contextSyncStatus: 'syncing' }, ...prev]);
-        const analyzed = await analyzeGitHubRepository(created, githubToken);
-        const resolvedRepo = { ...created, branch: analyzed.branch };
-        const contextFile = await syncRepositoryContext(resolvedRepo, githubToken, analyzed.context, analyzed.commit);
-        enriched = { ...resolvedRepo, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced', lastContextSyncedAt: Date.now(), isAnalyzingContext: false };
-        addLog('success', `Indexed ${analyzed.context.filesIndexed} files and synced context.md in ${created.name}.`, created.name);
-        void recordCloudflareWorkingStyle({ type: 'repo_context_synced', metadata: { repo: created.name, files: analyzed.context.filesIndexed, language: analyzed.context.techStack.language } });
-      } catch (error: any) {
-        enriched = { ...created, contextSyncStatus: 'error' };
-        addLog('warn', `Repository added, but context.md could not be synced: ${error.message || 'GitHub write access is required.'}`, created.name);
-      }
-    } else {
-      addLog('info', `Added ${created.name}. Add a GitHub token in API Credentials to analyze the tree and create context.md.`, created.name);
+    if (!githubToken) {
+      throw new Error('A GitHub token is required to fetch the live repository. Save it in API Credentials, then connect again.');
     }
+
+    setRepos(prev => [{ ...created, contextSyncStatus: 'syncing' }, ...prev]);
+    let analyzed;
+    try {
+      analyzed = await analyzeGitHubRepository(created, githubToken);
+    } catch (error: any) {
+      throw new Error(`Live repository fetch failed for ${created.name}: ${error.message || 'GitHub did not return repository data.'}`);
+    }
+
+    const resolvedRepo = { ...created, branch: analyzed.branch };
+    enriched = { ...resolvedRepo, lastCommitSha: analyzed.commit.sha, lastCommitMessage: analyzed.commit.commit?.message, contextAnalysis: analyzed.context, contextSyncStatus: 'error', isAnalyzingContext: false };
+    try {
+      const contextFile = await syncRepositoryContext(resolvedRepo, githubToken, analyzed.context, analyzed.commit);
+      enriched = { ...enriched, contextFilePath: 'context.md', contextFileSha: contextFile.sha, contextFileUrl: contextFile.url, contextSyncStatus: 'synced', lastContextSyncedAt: Date.now() };
+      addLog('success', `Indexed ${analyzed.context.filesIndexed} files and synced context.md in ${created.name}.`, created.name);
+      void recordCloudflareWorkingStyle({ type: 'repo_context_synced', metadata: { repo: created.name, files: analyzed.context.filesIndexed, language: analyzed.context.techStack.language } });
+    } catch (error: any) {
+      addLog('warn', `Indexed ${created.name}, but context.md could not be synced: ${error.message || 'GitHub write access is required.'}`, created.name);
+      addNotification({ title: `Context Sync Needs Attention`, message: `The live repository was fetched, but context.md could not be written. ${error.message || 'GitHub write access is required.'}`, type: 'error', repoName: created.name });
+    }
+
     setRepos(prev => [enriched, ...prev.filter(item => item.id !== enriched.id)]);
     void saveCloudflareWorkspace({ repos: [enriched, ...repos.filter(item => item.id !== enriched.id)], fixRuns, logs, daemonRunning });
     addNotification({ title: `Monitored Repo Added`, message: `Now watching commits on ${created.name} with model ${created.openRouterModel}.`, type: 'info', repoName: created.name });
