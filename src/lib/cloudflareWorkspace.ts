@@ -46,6 +46,13 @@ function hasVerifiedDeliveryEvidence(run: any) {
   );
 }
 
+function normalizeLegacyLog(log: DaemonLog): DaemonLog {
+  const legacyPattern = /(24\/7 autonomous|GitHub MCP bridge mounted|OpenRouter Free High-Context Models synchronized|GitHub MCP Tool Executed|Revert PR|Pushed & Merged)/i;
+  return legacyPattern.test(log.message || '')
+    ? { ...log, level: 'warn', message: `Legacy record retained for audit only; not independently verified: ${log.message}` }
+    : log;
+}
+
 function normalizeLegacyRun(run: BugFixRun): BugFixRun {
   const verifiedDelivery = hasVerifiedDeliveryEvidence(run);
   const validationEvidence = Array.isArray(run.mcpToolLogs) && run.mcpToolLogs.some((log: any) =>
@@ -96,7 +103,11 @@ export async function loadCloudflareWorkspace(): Promise<WorkspaceState | null> 
   try {
     const payload = await request('/api/workspace/state');
     const state = payload?.state as WorkspaceState | undefined;
-    return state ? { ...state, fixRuns: Array.isArray(state.fixRuns) ? state.fixRuns.map(normalizeLegacyRun) : [] } : null;
+    return state ? {
+      ...state,
+      fixRuns: Array.isArray(state.fixRuns) ? state.fixRuns.map(normalizeLegacyRun) : [],
+      logs: Array.isArray(state.logs) ? state.logs.map(normalizeLegacyLog) : [],
+    } : null;
   } catch (error) {
     console.warn('Cloudflare workspace unavailable; using local/Firebase fallback.', error);
     return null;
