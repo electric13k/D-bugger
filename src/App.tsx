@@ -128,7 +128,8 @@ export default function App() {
     void getWorkspaceId();
     loadCloudflareWorkspace().then((state) => {
       if (!state) return;
-      setRepos(state.repos || []);
+      const hydratedRepos = Array.isArray(state.repos) && state.repos.length > 0 ? state.repos : DEMO_PRESET_REPOS;
+      setRepos(hydratedRepos);
       setFixRuns(state.fixRuns || []);
       if (state.logs?.length) setLogs(prev => [...state.logs, ...prev].slice(0, 100));
       if (typeof state.daemonRunning === 'boolean') setDaemonRunning(state.daemonRunning);

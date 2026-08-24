@@ -57,7 +57,28 @@ export const OPENROUTER_MODELS: OpenRouterModelOption[] = [
   }
 ];
 
-export const DEMO_PRESET_REPOS: MonitoredRepo[] = [];
+export const DEMO_PRESET_REPOS: MonitoredRepo[] = [
+  {
+    id: 'demo-ecommerce-api',
+    name: 'demo/ecommerce-api',
+    owner: 'demo',
+    repo: 'ecommerce-api',
+    branch: 'main',
+    url: 'https://github.com/demo/ecommerce-api',
+    isLive: false,
+    status: 'monitoring',
+    autoMode: 'pr_only',
+    autoSweepOnPush: false,
+    includeCoAuthorAttribution: true,
+    openRouterModel: 'deepseek/deepseek-r1:free',
+    securityThreshold: 85,
+    lastCheckedAt: 0,
+    totalFixes: 0,
+    emailAlerts: false,
+    isMockDemo: true,
+    requiresHumanApproval: true,
+  },
+];
 
 export const BUG_SCENARIOS = [
   {
