@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ExternalLink, Loader2, Network, X } from 'lucide-react';
+import { readSessionCredential } from '../lib/cloudflareWorkspace';
 
 interface ResearchSource {
   path: string;
@@ -35,7 +36,7 @@ export const GridscapeResearchModal: React.FC<GridscapeResearchModalProps> = ({ 
       const response = await fetch('/api/research/gridscape', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topic.trim() }),
+        body: JSON.stringify({ topic: topic.trim(), githubToken: readSessionCredential('dbugger_github_token', 'repoheal_github_token') }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || `Gridscape research failed (${response.status}).`);

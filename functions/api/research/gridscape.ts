@@ -11,18 +11,19 @@ interface GitHubContent {
 }
 
 const repository = 'electric13k/Gridscape';
-const githubHeaders = {
+const githubHeaders = (token?: string) => ({
   Accept: 'application/vnd.github+json',
   'X-GitHub-Api-Version': '2022-11-28',
-};
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+});
 
 function decodeBase64(value: string) {
   const binary = atob(value.replace(/\n/g, ''));
   return new TextDecoder().decode(Uint8Array.from(binary, (character) => character.charCodeAt(0)));
 }
 
-async function readGitHubFile(path: string) {
-  const response = await fetch(`https://api.github.com/repos/${repository}/contents/${path}`, { headers: githubHeaders });
+async function readGitHubFile(path: string, token?: string) {
+  const response = await fetch(`https://api.github.com/repos/${repository}/contents/${path}`, { headers: githubHeaders(token) });
   if (!response.ok) return null;
   const data = await response.json() as GitHubContent;
   if (data.encoding !== 'base64' || !data.content) return null;
@@ -42,13 +43,14 @@ function offlineResearch(topic: string, sources: Array<{ path: string; url: stri
 
 export const onRequestPost: PagesFunction<GridscapeResearchEnv> = async ({ request, env }) => {
   try {
-    const body = await request.json() as { topic?: unknown };
+    const body = await request.json() as { topic?: unknown; githubToken?: unknown };
     const topic = typeof body.topic === 'string' ? body.topic.trim().slice(0, 1200) : '';
+    const githubToken = typeof body.githubToken === 'string' && body.githubToken.length <= 300 ? body.githubToken.trim() : undefined;
     if (!topic) return Response.json({ error: 'Research topic is required.' }, { status: 400 });
 
     const paths = ['context.md', 'metadata.json', 'functions/api/generate.ts', 'src/App.tsx', 'src/utils/storage.ts'];
-    const sources = (await Promise.all(paths.map(readGitHubFile))).filter((source): source is { path: string; url: string; text: string } => Boolean(source));
-    if (!sources.length) return Response.json({ error: 'Gridscape repository context could not be read.' }, { status: 502 });
+    const sources = (await Promise.all(paths.map((path) => readGitHubFile(path, githubToken)))).filter((source): source is { path: string; url: string; text: string } => Boolean(source));
+    if (!sources.length) return Response.json({ error: githubToken ? 'Gridscape repository context could not be read with the supplied GitHub token.' : 'Add your GitHub token in API Credentials so the agent can read the Gridscape repository.' }, { status: githubToken ? 502 : 401 });
 
     if (env.GRIDSCAPE_RESEARCH_URL) {
       const endpoint = `${env.GRIDSCAPE_RESEARCH_URL.replace(/\/$/, '')}/api/generate`;
