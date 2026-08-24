@@ -142,7 +142,7 @@ export class DaemonService {
       title: 'Live repository diagnostic and safe code repair',
       category: 'logic_flaw' as const,
       severity: 'high' as const,
-      suggestedFix: liveFile.content || liveFile.patch || scenario.originalCode,
+      suggestedFix: '',
       bugExplanation: `Reviewed the latest changed file from commit ${repositorySnapshot.commitSha.slice(0, 8)}. Identify concrete defects, security risks, regressions, and safe improvements from the supplied source and patch rather than assuming a preset scenario.`,
     } : scenario;
 

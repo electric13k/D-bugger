@@ -33,21 +33,49 @@ function scorePipeline(threshold: number) {
 
 function fallback(body: FixBugBody, model: string, threshold: number) {
   const scenario = body.bugScenario || {};
-  const originalCode = text(body.originalCode, 12000);
-  const suggestedFix = text(scenario.suggestedFix) || `${originalCode}\n\n// D-Bugger safety pass: preserve the public contract, add input guards, and release resources on every exit path.`;
-  const category = text(scenario.category) || 'logic_flaw';
-  const title = text(scenario.title) || `Automatic code-quality and ${category.replace(/_/g, ' ')} repair`;
+  const snapshotFile = body.repositorySnapshot?.files?.[0];
+  const originalCode = text(snapshotFile?.content, 16000) || text(body.originalCode, 16000);
+  const filePath = text(snapshotFile?.path, 240) || text(scenario.file) || 'repository working tree';
+  const findings: string[] = [];
+  let fixedCode = originalCode;
+  if (/\b(input|value|name|query|body)\.trim\(\)/g.test(fixedCode)) {
+    fixedCode = fixedCode.replace(/\b(input|value|name|query|body)\.trim\(\)/g, '(typeof $1 === \'string\' ? $1.trim() : \'\')');
+    findings.push('unguarded trim call can throw when input is absent or not a string');
+  }
+  if (/JSON\.parse\(/.test(fixedCode) && !/try\s*\{[\s\S]{0,600}JSON\.parse\(/.test(fixedCode)) {
+    findings.push('JSON.parse is not visibly guarded; malformed payloads can escape the handler');
+  }
+  if (/addEventListener\(/.test(fixedCode) && !/removeEventListener\(/.test(fixedCode)) {
+    findings.push('event listener registration has no visible matching cleanup');
+  }
+  if (/new\s+WebSocket\(/.test(fixedCode) && !/\.close\(\)/.test(fixedCode)) {
+    findings.push('WebSocket creation has no visible close path');
+  }
+  if (/SELECT[\s\S]{0,300}(\+|\$\{|`)/i.test(fixedCode)) {
+    findings.push('SQL construction may interpolate untrusted data and requires parameterized queries');
+  }
+  const suppliedFix = text(scenario.suggestedFix, 16000);
+  const changed = fixedCode !== originalCode;
+  const category = findings.some((finding) => /SQL/i.test(finding)) ? 'security_cve' : findings.some((finding) => /listener|WebSocket/i.test(finding)) ? 'memory_leak' : text(scenario.category) || 'logic_flaw';
+  const title = changed ? `Automatic repair for ${findings[0] || 'unsafe input handling'}` : findings.length ? `Review required: ${findings[0]}` : 'No high-confidence defect found';
+  const finalCode = suppliedFix || fixedCode;
+  const pipeline = scorePipeline(threshold);
+  if (!changed && !suppliedFix) {
+    pipeline.passed = false;
+    pipeline.overallScore = Math.min(pipeline.overallScore, 79);
+    pipeline.regressionGuard = { status: 'warning', confidence: 72 };
+  }
   return {
     bugTitle: title,
     bugCategory: category,
-    bugSeverity: text(scenario.severity) || 'high',
-    affectedFiles: [text(scenario.file) || 'repository working tree'],
-    aiReasoning: `${text(scenario.bugExplanation) || 'The scan identified a broken or fragile execution path.'} Automatic Gridscape research was supplied before patch synthesis. The repair prioritizes root-cause correction, contract preservation, security boundaries, and low-risk improvements to functioning code.`,
-    fixedCodeSnippet: suggestedFix,
-    patchDiff: `@@ -1,8 +1,12 @@\n- ${originalCode.split('\n')[0] || '// vulnerable or broken line'}\n+ // [D-BUGGER AUTOMATIC REPAIR]\n+ ${suggestedFix.split('\n')[0] || '// guarded implementation'}`,
-    pipeline: scorePipeline(threshold),
-    pullRequestTitle: `fix(auto): ${title}`,
-    pullRequestBody: `### Automatic D-Bugger repair\n\nGridscape research was gathered before analysis. The patch fixes the detected behavior and applies only compatible, testable improvements.`,
+    bugSeverity: findings.some((finding) => /SQL/i.test(finding)) ? 'critical' : findings.length ? 'high' : 'low',
+    affectedFiles: [filePath],
+    aiReasoning: `${findings.length ? findings.join('; ') : 'No high-confidence defect was detected by the deterministic checks.'} Automatic Gridscape research was supplied before analysis. ${changed ? 'A conservative input guard was applied.' : 'The result is flagged for model or human review rather than inventing a patch.'}`,
+    fixedCodeSnippet: finalCode,
+    patchDiff: changed ? `@@ changed ${filePath}\n- ${originalCode.split('\n').find((line) => /trim\(\)/.test(line)) || originalCode.split('\n')[0] || '// vulnerable line'}\n+ ${fixedCode.split('\n').find((line) => /typeof .*trim/.test(line)) || fixedCode.split('\n')[0] || '// guarded line'}` : `No automatic patch generated for ${filePath}; review findings before changing code.`,
+    pipeline,
+    pullRequestTitle: changed ? `fix(auto): ${title}` : `review(auto): inspect ${filePath}`,
+    pullRequestBody: `### Automatic D-Bugger diagnostic\n\nGridscape research was gathered before analysis. ${changed ? 'A conservative, contract-preserving repair was generated.' : 'No safe deterministic patch was generated; model or human review is required before delivery.'}`,
     modelUsed: model,
   };
 }
@@ -105,7 +133,7 @@ export const onRequestPost: PagesFunction<FixBugEnv> = async ({ request, env }) 
       }
     }
 
-    return Response.json({ success: true, data: fallback({ ...body, originalCode: repositoryFiles || originalCode }, model, threshold), mode: 'deterministic-safe-fallback' });
+    return Response.json({ success: true, data: fallback({ ...body, originalCode }, model, threshold), mode: 'deterministic-safe-fallback' });
   } catch (error) {
     console.error('Automatic D-Bugger fix error:', error);
     return Response.json({ success: false, error: 'Automatic repair could not be completed.' }, { status: 500 });
