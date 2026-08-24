@@ -35,7 +35,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
   const [alertEmail, setAlertEmail] = useState(userEmail || localStorage.getItem('repoheal_alert_email') || '');
   const [pollInterval, setPollInterval] = useState(Number(localStorage.getItem('repoheal_poll_interval') || 30));
-  const [defaultModel, setDefaultModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
+  const [defaultModel, setDefaultModel] = useState(sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
   const [minSecurityScore, setMinSecurityScore] = useState(Number(localStorage.getItem('repoheal_min_security') || 85));
   const [browserNotifications, setBrowserNotifications] = useState(
     typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted'
@@ -53,8 +53,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (openRouterKey) sessionStorage.setItem('dbugger_openrouter_key', openRouterKey);
-    if (githubToken) sessionStorage.setItem('dbugger_github_token', githubToken);
+    if (openRouterKey.trim()) sessionStorage.setItem('dbugger_openrouter_key', openRouterKey.trim());
+    else sessionStorage.removeItem('dbugger_openrouter_key');
+    if (githubToken.trim()) sessionStorage.setItem('dbugger_github_token', githubToken.trim());
+    else sessionStorage.removeItem('dbugger_github_token');
+    sessionStorage.setItem('dbugger_default_model', defaultModel);
     localStorage.setItem('dbugger_slack_webhook', slackWebhook);
     localStorage.setItem('repoheal_alert_email', alertEmail);
     localStorage.setItem('repoheal_poll_interval', String(pollInterval));
@@ -122,7 +125,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-1">
             <label className="text-[#121212] font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <Key className="h-3.5 w-3.5 text-black" />
-              OpenRouter API Key (Optional for Custom Rate Limits):
+              OpenRouter API Key (Required for real AI analysis):
             </label>
             <input
               type="password"
@@ -146,7 +149,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="password"
               value={githubToken}
               onChange={(e) => setGithubToken(e.target.value)}
-              placeholder="ghp_... (leave blank to use MCP sandbox bridge)"
+              placeholder="ghp_... (required for real repository operations)"
               className="w-full border border-black bg-[#F9F7F2] px-3 py-2 text-xs text-[#121212] placeholder-[#121212]/40 focus:outline-none font-mono shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
             />
             <p className="text-[11px] text-[#121212]/60">

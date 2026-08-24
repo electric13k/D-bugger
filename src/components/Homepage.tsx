@@ -27,6 +27,7 @@ import {
   Network
 } from 'lucide-react';
 import { OPENROUTER_MODELS } from '../data/models';
+import { readSessionCredential } from '../lib/cloudflareWorkspace';
 import { MonitoredRepo, BugFixRun } from '../types';
 import { DaemonService } from '../services/daemonService';
 
@@ -58,8 +59,8 @@ export const Homepage: React.FC<HomepageProps> = ({
   userEmail,
 }) => {
   // Integration States
-  const [openRouterKey, setOpenRouterKey] = useState(localStorage.getItem('repoheal_openrouter_key') || '');
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('repoheal_github_token') || '');
+  const [openRouterKey, setOpenRouterKey] = useState(readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key'));
+  const [githubToken, setGithubToken] = useState(readSessionCredential('dbugger_github_token', 'repoheal_github_token'));
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
@@ -81,7 +82,9 @@ export const Homepage: React.FC<HomepageProps> = ({
 
   const handleSaveOpenRouter = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('repoheal_openrouter_key', openRouterKey);
+    sessionStorage.setItem('dbugger_openrouter_key', openRouterKey.trim());
+    sessionStorage.setItem('dbugger_default_model', selectedModel);
+    localStorage.removeItem('repoheal_openrouter_key');
     localStorage.setItem('repoheal_default_model', selectedModel);
     setKeySaved(true);
     setTimeout(() => setKeySaved(false), 2500);
@@ -89,7 +92,8 @@ export const Homepage: React.FC<HomepageProps> = ({
 
   const handleSaveGitHub = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('repoheal_github_token', githubToken);
+    sessionStorage.setItem('dbugger_github_token', githubToken.trim());
+    localStorage.removeItem('repoheal_github_token');
     setGhSaved(true);
     setTimeout(() => setGhSaved(false), 2500);
   };
@@ -272,11 +276,11 @@ export const Homepage: React.FC<HomepageProps> = ({
                   API Credentials &amp; AI Model Setup
                 </h3>
                 <span className="text-[10px] font-mono font-bold bg-black text-[#F9F7F2] px-2 py-0.5 uppercase">
-                  {openRouterKey ? 'Custom Key Active' : 'Free Tier Active'}
+                  {openRouterKey ? 'AI Key Active' : 'Diagnostics Only'}
                 </span>
               </div>
               <p className="text-xs font-sans text-[#121212]/80 mt-1 leading-relaxed max-w-2xl">
-                Configure your personal <strong>OpenRouter API Key</strong> or select from high-context free models (DeepSeek-R1 128k, Llama 3.3 70B, Qwen 2.5 Coder, Gemini 2.0 Flash 1M). Connect your <strong>GitHub Token</strong>, <strong>Slack Webhook</strong>, and <strong>Push Alerts</strong>.
+                Add your personal <strong>OpenRouter API Key</strong> for real model analysis and patch proposals. Without it, D-Bugger runs diagnostics only. Connect your <strong>GitHub Token</strong> so real repository source and commits can be read, then configure <strong>Slack Webhook</strong> and <strong>Push Alerts</strong> if needed.
               </p>
             </div>
           </div>
@@ -384,7 +388,7 @@ export const Homepage: React.FC<HomepageProps> = ({
               </div>
 
               <p className="text-xs font-sans text-[#121212]/80 mb-3">
-                Select your preferred high-context model or enter an OpenRouter key to expand rate limits. Free models like DeepSeek-R1 (128k) and Gemini 2.0 Flash (1M) work immediately.
+                Select the model to use after you provide your own OpenRouter key. D-Bugger will display the model response summary and evidence in AI Thoughts; without a key, only local deterministic diagnostics run.
               </p>
 
               <form onSubmit={handleSaveOpenRouter} className="space-y-2.5">
@@ -465,7 +469,7 @@ export const Homepage: React.FC<HomepageProps> = ({
                     type="password"
                     value={githubToken}
                     onChange={(e) => setGithubToken(e.target.value)}
-                    placeholder="ghp_... (leave empty for MCP sandbox bridge mode)"
+                    placeholder="ghp_... (required for real repositories)"
                     className="w-full border border-black bg-white px-2.5 py-1.5 text-xs text-[#121212] font-mono focus:outline-none placeholder-[#121212]/40 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                   />
                   <p className="text-[10px] text-[#121212]/60 mt-1 font-mono">

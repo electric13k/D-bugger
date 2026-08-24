@@ -22,6 +22,7 @@ import {
   Key
 } from 'lucide-react';
 import { signOutWorkspace, WorkspaceUser } from '../lib/workspaceAuth';
+import { readSessionCredential } from '../lib/cloudflareWorkspace';
 import { NotificationCenter } from './NotificationCenter';
 import { InAppNotification } from '../types';
 
@@ -62,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onMarkAllNotificationsRead,
   onClearAllNotifications,
 }) => {
-  const hasCustomKey = typeof window !== 'undefined' && Boolean(localStorage.getItem('repoheal_openrouter_key'));
+  const hasCustomKey = Boolean(readSessionCredential('dbugger_openrouter_key', 'repoheal_openrouter_key'));
 
   const handleAuth = async () => {
     if (currentUser) {

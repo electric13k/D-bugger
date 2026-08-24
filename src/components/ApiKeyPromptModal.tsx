@@ -33,11 +33,11 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
   onClose,
   onSaveKeys
 }) => {
-  const [openRouterKey, setOpenRouterKey] = useState(localStorage.getItem('repoheal_openrouter_key') || '');
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('repoheal_github_token') || '');
+  const [openRouterKey, setOpenRouterKey] = useState(sessionStorage.getItem('dbugger_openrouter_key') || localStorage.getItem('repoheal_openrouter_key') || '');
+  const [selectedModel, setSelectedModel] = useState(sessionStorage.getItem('dbugger_default_model') || localStorage.getItem('repoheal_default_model') || 'deepseek/deepseek-r1:free');
+  const [githubToken, setGithubToken] = useState(sessionStorage.getItem('dbugger_github_token') || localStorage.getItem('repoheal_github_token') || '');
   const [slackWebhook, setSlackWebhook] = useState(localStorage.getItem('dbugger_slack_webhook') || '');
-  const [useFreeTier, setUseFreeTier] = useState(!localStorage.getItem('repoheal_openrouter_key'));
+  const [useFreeTier, setUseFreeTier] = useState(false);
 
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
@@ -69,9 +69,12 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const effectiveKey = useFreeTier ? '' : openRouterKey.trim();
-    localStorage.setItem('repoheal_openrouter_key', effectiveKey);
+    sessionStorage.setItem('dbugger_openrouter_key', effectiveKey.trim());
+    sessionStorage.setItem('dbugger_default_model', selectedModel);
+    sessionStorage.setItem('dbugger_github_token', githubToken.trim());
+    localStorage.removeItem('repoheal_openrouter_key');
+    localStorage.removeItem('repoheal_github_token');
     localStorage.setItem('repoheal_default_model', selectedModel);
-    localStorage.setItem('repoheal_github_token', githubToken.trim());
     localStorage.setItem('dbugger_slack_webhook', slackWebhook.trim());
 
     onSaveKeys({
@@ -186,7 +189,7 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                       OpenRouter High-Context AI Models
                     </h4>
                     <p className="text-xs text-[#121212]/80 mt-1 leading-relaxed">
-                      You can either enter your personal OpenRouter API Key for high rate limits, or activate the <strong>Free Tier High-Context Models</strong> (DeepSeek-R1 128k, Llama 3.3 70B, Qwen 2.5 Coder, Gemini 2.0 Flash 1M) with zero setup.
+                      Enter your personal <strong>OpenRouter API Key</strong> for real model analysis and patch proposals. Without a key, D-Bugger runs deterministic diagnostics only and does not claim AI reasoning.
                     </p>
                   </div>
                 </div>
@@ -202,7 +205,7 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                     onChange={() => setUseFreeTier(true)}
                     className="accent-black"
                   />
-                  <span>Use Built-in Free Tier (No key needed)</span>
+                  <span>Diagnostics only (no AI key)</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase text-[#121212]">
@@ -306,11 +309,11 @@ export const ApiKeyPromptModal: React.FC<ApiKeyPromptModalProps> = ({
                   type="password"
                   value={githubToken}
                   onChange={(e) => setGithubToken(e.target.value)}
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (leave empty for demo sandbox mode)"
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx (required for real repositories)"
                   className="w-full border border-black bg-[#F9F7F2] px-3 py-2 text-xs text-[#121212] font-mono focus:outline-none placeholder-[#121212]/40 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
                 />
                 <p className="text-[11px] text-[#121212]/70 font-mono">
-                  If left blank, D-Bugger uses the built-in MCP sandbox bridge to simulate commits, PRs, and rollbacks on demo repositories safely.
+                  A GitHub token is required to read real repositories and deliver real branches, commits, or pull requests. Without one, only explicitly labeled sandbox diagnostics are available.
                 </p>
               </div>
 
