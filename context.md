@@ -24,6 +24,10 @@ Firebase remains in the repository because the original daemon service and data 
 
 User-owned OpenRouter and GitHub credentials are session-only. Use `dbugger_openrouter_key` and `dbugger_github_token`; legacy `repoheal_*` values may be read only as migration fallbacks. Never commit credentials or hardcode personal email addresses.
 
+## Gridscape / Infinity Canvas research
+
+D-Bugger now exposes a preserved-UI research modal labeled **Research with Gridscape**. Its Pages Function at `functions/api/research/gridscape.ts` reads the public `electric13k/Gridscape` repository context set (`context.md`, `metadata.json`, `functions/api/generate.ts`, `src/App.tsx`, and `src/utils/storage.ts`) and returns repository-grounded findings plus suggested research branches. If the Pages environment variable `GRIDSCAPE_RESEARCH_URL` is configured with a deployed Infinity Canvas base URL, the same route delegates synthesis to that app’s `POST /api/generate` contract; otherwise it clearly labels the result as a repository-grounded preview. No Gemini key is copied into D-Bugger.
+
 ## Cloudflare and GitHub features
 
 Pages Functions provide D1-backed workspace state loading/saving, working-style learning events, signed GitHub push webhook reception, webhook secret registration, recent push event polling, and related routes under `functions/api/`. `src/lib/cloudflareWorkspace.ts` is the browser client. `src/lib/repoContext.ts` analyzes a linked repository, creates or updates that repository's `context.md`, registers the GitHub push webhook, and uses `[dbugger-context]` commit messages to avoid webhook recursion. The connected GitHub token must have Contents write access for context handoffs and repository updates.

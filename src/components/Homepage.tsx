@@ -23,7 +23,8 @@ import {
   Trash2,
   ExternalLink,
   Zap,
-  Activity
+  Activity,
+  Network
 } from 'lucide-react';
 import { OPENROUTER_MODELS } from '../data/models';
 import { MonitoredRepo, BugFixRun } from '../types';
@@ -37,6 +38,7 @@ interface HomepageProps {
   onOpenEmailReport: () => void;
   onOpenSettings: () => void;
   onOpenApiKeyPrompt: () => void;
+  onOpenGridscapeResearch: () => void;
   repos: MonitoredRepo[];
   fixRuns: BugFixRun[];
   userEmail: string;
@@ -50,6 +52,7 @@ export const Homepage: React.FC<HomepageProps> = ({
   onOpenEmailReport,
   onOpenSettings,
   onOpenApiKeyPrompt,
+  onOpenGridscapeResearch,
   repos,
   fixRuns,
   userEmail,
@@ -198,6 +201,14 @@ export const Homepage: React.FC<HomepageProps> = ({
               >
                 <Flame className="h-4 w-4 text-red-600" />
                 Simulate Bug Ingestion
+              </button>
+
+              <button
+                onClick={onOpenGridscapeResearch}
+                className="flex items-center gap-1.5 border border-black bg-violet-100 text-violet-950 px-3.5 py-2 text-xs font-sans font-bold uppercase tracking-wider shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-violet-200 transition-all"
+              >
+                <Network className="h-3.5 w-3.5" />
+                Research with Gridscape
               </button>
 
               <button

@@ -19,6 +19,7 @@ import { BugPlaygroundModal } from './components/BugPlaygroundModal';
 import { AddRepoModal } from './components/AddRepoModal';
 import { ApiKeyPromptModal } from './components/ApiKeyPromptModal';
 import { EmailAuthModal } from './components/EmailAuthModal';
+import { GridscapeResearchModal } from './components/GridscapeResearchModal';
 import { analyzeGitHubRepository, syncRepositoryContext } from './lib/repoContext';
 import { getWorkspaceId, loadCloudflareWorkspace, saveCloudflareWorkspace, recordCloudflareWorkingStyle, readSessionCredential } from './lib/cloudflareWorkspace';
 import { 
@@ -110,6 +111,7 @@ export default function App() {
   const [bugPlaygroundOpen, setBugPlaygroundOpen] = useState(false);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
   const [emailAuthOpen, setEmailAuthOpen] = useState(false);
+  const [gridscapeResearchOpen, setGridscapeResearchOpen] = useState(false);
 
   // 1. Listen to the reliable Cloudflare workspace auth state.
   useEffect(() => {
@@ -462,6 +464,7 @@ export default function App() {
             onOpenEmailReport={() => setEmailModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenApiKeyPrompt={() => setApiKeyPromptOpen(true)}
+            onOpenGridscapeResearch={() => setGridscapeResearchOpen(true)}
             repos={repos}
             fixRuns={fixRuns}
             userEmail={currentUser?.email || ''}
@@ -640,6 +643,11 @@ export default function App() {
       <EmailAuthModal
         isOpen={emailAuthOpen}
         onClose={() => setEmailAuthOpen(false)}
+      />
+
+      <GridscapeResearchModal
+        isOpen={gridscapeResearchOpen}
+        onClose={() => setGridscapeResearchOpen(false)}
       />
       
       {/* Code Diff Viewer Modal */}
