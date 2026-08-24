@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -25,6 +25,15 @@ export async function loginWithGoogle(): Promise<User | null> {
     // Allow fallback handling in caller if iframe blocks popups
     throw error;
   }
+}
+
+export async function loginWithGoogleRedirect() {
+  await signInWithRedirect(auth, googleProvider);
+}
+
+export async function finishGoogleRedirect(): Promise<User | null> {
+  const result = await getRedirectResult(auth);
+  return result?.user || null;
 }
 
 export async function logoutUser() {

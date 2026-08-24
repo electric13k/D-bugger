@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, LogIn, UserPlus, X } from 'lucide-react';
-import { registerWithEmail, signInWithEmail } from '../lib/workspaceAuth';
+import { Eye, EyeOff, Loader2, LogIn, UserPlus, X } from 'lucide-react';
+import { registerWithEmail, signInWithEmail, signInWithGoogle } from '../lib/workspaceAuth';
 
 interface EmailAuthModalProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({ isOpen, onClose 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (isOpen) setError('');
@@ -74,13 +75,23 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({ isOpen, onClose 
           </label>
           <label className="block space-y-1">
             <span className="text-[10px] font-sans font-bold uppercase tracking-wider">Password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} maxLength={128} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} className="w-full border border-black bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+            <div className="relative">
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={8} maxLength={128} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} className="w-full border border-black bg-white px-3 py-2 pr-10 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+              <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute right-1 top-1/2 -translate-y-1/2 border border-transparent p-1.5 text-[#121212]/70 hover:border-black hover:text-black" aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'}>
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {mode === 'register' && <span className="block text-[10px] text-[#121212]/60">Use at least 8 characters.</span>}
           </label>
           {mode === 'register' && (
             <label className="block space-y-1">
               <span className="text-[10px] font-sans font-bold uppercase tracking-wider">Confirm password</span>
-              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" className="w-full border border-black bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" className="w-full border border-black bg-white px-3 py-2 pr-10 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+                <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute right-1 top-1/2 -translate-y-1/2 border border-transparent p-1.5 text-[#121212]/70 hover:border-black hover:text-black" aria-label={showPassword ? 'Hide confirmation password' : 'Show confirmation password'} title={showPassword ? 'Hide password' : 'Show password'}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </label>
           )}
 
@@ -90,6 +101,14 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({ isOpen, onClose 
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : mode === 'signin' ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
             {loading ? 'Working...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
           </button>
+
+          {mode === 'signin' && <>
+            <div className="flex items-center gap-2 text-[10px] font-sans uppercase tracking-wider text-[#121212]/50"><span className="h-px flex-1 bg-black/20" />or<span className="h-px flex-1 bg-black/20" /></div>
+            <button type="button" disabled={loading} onClick={async () => { setError(''); setLoading(true); try { await signInWithGoogle(); } catch (authError: any) { setError(authError?.message || 'Google sign-in could not start.'); setLoading(false); } }} className="flex w-full items-center justify-center gap-2 border border-black bg-white px-4 py-3 text-xs font-sans font-bold uppercase tracking-[0.16em] text-[#121212] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all hover:bg-[#F9F7F2] disabled:cursor-wait disabled:opacity-60">
+              <span className="font-serif-heading text-base font-black">G</span>
+              Continue with Google
+            </button>
+          </>}
 
           <button type="button" onClick={() => { setMode(mode === 'signin' ? 'register' : 'signin'); setError(''); }} className="w-full text-center text-[10px] font-sans font-bold uppercase tracking-wider text-[#121212]/70 underline underline-offset-4 hover:text-black">
             {mode === 'signin' ? 'Need an account? Create one' : 'Already have an account? Sign in'}

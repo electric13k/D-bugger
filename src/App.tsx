@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WorkspaceUser, onWorkspaceAuthStateChanged } from './lib/workspaceAuth';
+import { WorkspaceUser, completeGoogleSignIn, onWorkspaceAuthStateChanged } from './lib/workspaceAuth';
 import { MonitoredRepo, BugFixRun, DaemonLog, InAppNotification } from './types';
 import { DaemonService } from './services/daemonService';
 import { DEMO_PRESET_REPOS } from './data/models';
@@ -116,6 +116,9 @@ export default function App() {
     const unsubscribe = onWorkspaceAuthStateChanged((user) => {
       setCurrentUser(user);
       void DaemonService.initializeDefaults(user?.email || undefined);
+    });
+    void completeGoogleSignIn().catch((error: any) => {
+      console.warn('Google sign-in could not be completed:', error?.message || error);
     });
     return () => unsubscribe();
   }, []);
@@ -240,8 +243,9 @@ export default function App() {
     
     await new Promise(r => setTimeout(r, 800));
 
-    if (repos.length > 0) {
-      const randomRepo = repos[Math.floor(Math.random() * repos.length)];
+    const scanTargets = repos.length ? repos : DEMO_PRESET_REPOS;
+    if (scanTargets.length > 0) {
+      const randomRepo = scanTargets[Math.floor(Math.random() * scanTargets.length)];
       await handleScanRepo(randomRepo);
     }
 
@@ -694,7 +698,7 @@ export default function App() {
       <BugPlaygroundModal
         isOpen={bugPlaygroundOpen}
         onClose={() => setBugPlaygroundOpen(false)}
-        repos={repos}
+        repos={repos.length ? repos : DEMO_PRESET_REPOS}
         onTriggerBug={handleTriggerBugFromPlayground}
       />
 

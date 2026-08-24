@@ -1,4 +1,5 @@
 import { getWorkspaceId, setWorkspaceId } from './cloudflareWorkspace';
+import { finishGoogleRedirect, loginWithGoogleRedirect } from './firebase';
 
 export interface WorkspaceUser {
   uid: string;
@@ -91,6 +92,22 @@ export async function signInWithEmail(email: string, password: string) {
   const payload = await authRequest('/api/auth/login', { email, password });
   const user = userFromPayload(payload.user);
   if (!user) throw new Error('Signed in, but no account profile was returned.');
+  if (typeof window !== 'undefined') window.localStorage.removeItem(GUEST_KEY);
+  setCurrentUser(user);
+  return user;
+}
+
+export async function signInWithGoogle() {
+  await loginWithGoogleRedirect();
+}
+
+export async function completeGoogleSignIn() {
+  const firebaseUser = await finishGoogleRedirect();
+  if (!firebaseUser) return null;
+  const idToken = await firebaseUser.getIdToken();
+  const payload = await authRequest('/api/auth/google', { idToken });
+  const user = userFromPayload(payload.user);
+  if (!user) throw new Error('Google sign-in completed without a D-Bugger profile.');
   if (typeof window !== 'undefined') window.localStorage.removeItem(GUEST_KEY);
   setCurrentUser(user);
   return user;
