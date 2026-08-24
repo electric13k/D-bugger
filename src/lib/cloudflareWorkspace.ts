@@ -59,6 +59,8 @@ function normalizeLegacyRun(run: BugFixRun): BugFixRun {
     ['validation', 'test_run', 'ci_result'].includes(log?.tool) && log?.output?.verified === true
   );
   const existingPipeline: any = run.pipeline || {};
+  const aiLog: any = Array.isArray(run.mcpToolLogs) ? run.mcpToolLogs.find((log: any) => log?.tool === 'ai_analysis') : undefined;
+  const honestDiagnosticTrace = aiLog?.output?.mode === 'deterministic-safe-fallback' || aiLog?.output?.responseReceived === false;
   if (verifiedDelivery) {
     return {
       ...run,
@@ -69,13 +71,20 @@ function normalizeLegacyRun(run: BugFixRun): BugFixRun {
   const legalRiskCheck = existingPipeline.legalRiskCheck || {};
   return {
     ...run,
-    status: verifiedDelivery ? 'awaiting_human_review' : (run.isUndone || run.status === 'undone' ? 'awaiting_human_review' : run.status),
+    status: run.isUndone || run.status === 'undone' ? 'awaiting_human_review' : run.status,
     pullRequestUrl: verifiedDelivery ? run.pullRequestUrl : undefined,
     pullRequestNumber: verifiedDelivery ? run.pullRequestNumber : undefined,
     pushedCommitSha: verifiedDelivery ? run.pushedCommitSha : undefined,
     revertPrUrl: undefined,
     isUndone: verifiedDelivery ? run.isUndone : undefined,
     canUndo: verifiedDelivery ? Boolean(run.canUndo) : false,
+    modelUsed: honestDiagnosticTrace ? run.modelUsed : 'legacy-record',
+    aiReasoning: honestDiagnosticTrace ? run.aiReasoning : 'Legacy record retained for audit only; no verified model activity or patch evidence is available.',
+    aiThoughtStream: honestDiagnosticTrace ? run.aiThoughtStream : undefined,
+    agentSteps: honestDiagnosticTrace ? run.agentSteps : undefined,
+    fixedCodeSnippet: honestDiagnosticTrace ? run.fixedCodeSnippet : undefined,
+    patchDiff: honestDiagnosticTrace ? run.patchDiff : '',
+    mcpToolLogs: (Array.isArray(run.mcpToolLogs) ? run.mcpToolLogs : []).filter((log: any) => !['create_branch', 'commit_file', 'create_pull_request', 'revert_commit'].includes(log?.tool) && (honestDiagnosticTrace || log?.tool !== 'ai_analysis')),
     pipeline: {
       ...existingPipeline,
       passed: false,
