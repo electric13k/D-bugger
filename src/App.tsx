@@ -281,7 +281,8 @@ export default function App() {
       addLog('ai', `Invoking OpenRouter high-context model (${repo.openRouterModel})...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo, undefined, sourceCode, repositorySnapshot?.commitMessage, researchResult, repositorySnapshot);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
-      
+      const modelEvidence = fixRun.mcpToolLogs.find((entry) => entry.tool === 'ai_analysis')?.output;
+      addLog(modelEvidence?.responseReceived ? 'ai' : 'warn', modelEvidence?.responseReceived ? `AI model returned an analysis for ${repo.name}; the concise reasoning summary is available in AI Thoughts.` : 'No AI model response was available; this run used deterministic diagnostics only. Add a session-only OpenRouter key for model analysis.', repo.name);
       const deliveryVerified = Boolean(fixRun.pullRequestNumber && fixRun.pushedCommitSha);
       addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
       addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'Connect a real repository and GitHub token to deliver a PR.'), repo.name);
@@ -331,7 +332,8 @@ export default function App() {
       addLog('ai', `Analyzing AST & context with ${repo.openRouterModel}...`, repo.name);
       const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit, researchResult);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
-      
+      const modelEvidence = fixRun.mcpToolLogs.find((entry) => entry.tool === 'ai_analysis')?.output;
+      addLog(modelEvidence?.responseReceived ? 'ai' : 'warn', modelEvidence?.responseReceived ? `AI model returned an analysis for ${repo.name}; the concise reasoning summary is available in AI Thoughts.` : 'No AI model response was available; this simulation used deterministic diagnostics only.', repo.name);
       const deliveryVerified = Boolean(fixRun.pullRequestNumber && fixRun.pushedCommitSha);
       addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
       addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on ${repo.name}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'This is a simulation path; connect a real repository for delivery.'), repo.name);
