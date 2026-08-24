@@ -232,9 +232,9 @@ export class DaemonService {
         phase: 'ast_ingestion',
         timestamp: Date.now() - 1800,
         title: 'AST Ingestion & Symbol Tree Parse',
-        thought: `Examining AST in ${scenario.file}. Discovered 28 AST expressions and detected invariant boundary breach at callsite. Gridscape research was gathered automatically before patch synthesis.`,
+        thought: `Examining AST in ${activeScenario.file}. Discovered 28 AST expressions and detected invariant boundary breach at callsite. Gridscape research was gathered automatically before patch synthesis.`,
         confidence: 99,
-        astNodeInvestigated: `ExpressionStatement[Callee="${scenario.category}"]`,
+        astNodeInvestigated: `ExpressionStatement[Callee="${activeScenario.category}"]`,
         codeInspection: originalCode.slice(0, 120),
         verdict: 'passed'
       },
@@ -243,10 +243,10 @@ export class DaemonService {
         phase: 'root_cause_deduction',
         timestamp: Date.now() - 1300,
         title: 'Defect Analysis & Root Cause Deduction',
-        thought: `Identified ${scenario.category} (${scenario.severity.toUpperCase()}). ${scenario.bugExplanation}. Target: Synthesize defensive type guard.`,
+        thought: `Identified ${activeScenario.category} (${activeScenario.severity.toUpperCase()}). ${activeScenario.bugExplanation}. Target: Synthesize defensive type guard.`,
         confidence: 97,
         astNodeInvestigated: 'BinaryExpression / UnhandledNullCheck',
-        codeInspection: scenario.bugExplanation,
+        codeInspection: activeScenario.bugExplanation,
         verdict: 'passed'
       },
       {
@@ -256,7 +256,7 @@ export class DaemonService {
         title: 'Defensive Non-Breaking Patch Synthesis',
         thought: `Synthesized safe AST patch preserving API signatures using ${repo.openRouterModel}, guided by automatic Gridscape repository research. Verified zero side-effects.`,
         confidence: 98,
-        codeInspection: scenario.suggestedFix.slice(0, 150),
+        codeInspection: activeScenario.suggestedFix.slice(0, 150),
         verdict: 'success'
       },
       {
