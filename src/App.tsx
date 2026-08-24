@@ -282,13 +282,14 @@ export default function App() {
       const fixRun = await DaemonService.triggerBugFix(repo, undefined, sourceCode, repositorySnapshot?.commitMessage, researchResult, repositorySnapshot);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
-      addLog('success', `Autonomous fix ready: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
-      addLog('mcp', `GitHub MCP created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}`, repo.name);
+      const deliveryVerified = Boolean(fixRun.pullRequestNumber && fixRun.pushedCommitSha);
+      addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (Security Score: ${fixRun.pipeline.overallScore}%)`, repo.name);
+      addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on branch ${fixRun.branchName}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'Connect a real repository and GitHub token to deliver a PR.'), repo.name);
       
       addNotification({
-        title: `Auto-Fixed: ${fixRun.bugTitle}`,
-        message: `Security Grade ${fixRun.pipeline.overallScore}%. PR #${fixRun.pullRequestNumber} opened on ${repo.name}.`,
-        type: 'fix_success',
+        title: deliveryVerified ? `Auto-Fixed: ${fixRun.bugTitle}` : `Diagnosis Complete: ${fixRun.bugTitle}`,
+        message: deliveryVerified ? `Security Grade ${fixRun.pipeline.overallScore}%. PR #${fixRun.pullRequestNumber} opened on ${repo.name}.` : `Security Grade ${fixRun.pipeline.overallScore}%. No GitHub changes were made; review the diagnosis in the console.`,
+        type: deliveryVerified ? 'fix_success' : 'info',
         repoName: repo.name,
         prUrl: fixRun.pullRequestUrl
       });
@@ -331,13 +332,14 @@ export default function App() {
       const fixRun = await DaemonService.triggerBugFix(repo, scenarioIndex, customCode, customCommit, researchResult);
       void saveCloudflareWorkspace({ repos, fixRuns: [fixRun, ...fixRuns].slice(0, 50), logs, daemonRunning });
       
-      addLog('success', `AI resolved bug: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
-      addLog('mcp', `GitHub MCP: PR #${fixRun.pullRequestNumber} opened on ${repo.name}`, repo.name);
+      const deliveryVerified = Boolean(fixRun.pullRequestNumber && fixRun.pushedCommitSha);
+      addLog(deliveryVerified ? 'success' : 'warn', `${deliveryVerified ? 'Verified repair ready' : 'Diagnosis complete; no real GitHub mutation made'}: "${fixRun.bugTitle}" (${fixRun.bugCategory})`, repo.name);
+      addLog(deliveryVerified ? 'mcp' : 'warn', deliveryVerified ? `GitHub created Pull Request #${fixRun.pullRequestNumber} on ${repo.name}` : (fixRun.mcpToolLogs.find((entry) => entry.tool === 'github_delivery')?.output?.reason || 'This is a simulation path; connect a real repository for delivery.'), repo.name);
       
       addNotification({
-        title: `Simulated Bug Remediated`,
-        message: `Fixed "${fixRun.bugTitle}" on ${repo.name} with ${repo.openRouterModel}.`,
-        type: 'fix_success',
+        title: deliveryVerified ? `Auto-Fixed: ${fixRun.bugTitle}` : `Simulation Diagnosis: ${fixRun.bugTitle}`,
+        message: deliveryVerified ? `Fixed "${fixRun.bugTitle}" on ${repo.name} with ${repo.openRouterModel}.` : `Diagnosed "${fixRun.bugTitle}" on ${repo.name}; no GitHub changes were made.`,
+        type: deliveryVerified ? 'fix_success' : 'info',
         repoName: repo.name,
         prUrl: fixRun.pullRequestUrl
       });
